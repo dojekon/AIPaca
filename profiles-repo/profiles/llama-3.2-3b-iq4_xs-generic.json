@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "llama-3.2-3b/iq4_xs/generic-arm64",
+  "backend": "cpu",
+  "model": {
+    "family": "llama-3.2-3b",
+    "matchPatterns": ["llama.?3\\.2.?3b"],
+    "quants": ["IQ4_XS", "Q4_K_M"]
+  },
+  "launch": {
+    "nCtx": 2048,
+    "threads": 4,
+    "nGpuLayers": 0
+  },
+  "minAppVersion": "0.1.0"
+}

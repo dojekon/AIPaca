@@ -1,0 +1,18 @@
+{
+  "key": "qcom-sm8650/12gb",
+  "soc": "SM8650",
+  "vendor": "qcom",
+  "ramGb": 12,
+  "htpVersion": 75,
+  "cores": {
+    "total": 8,
+    "big": [2, 3, 4, 5, 6, 7],
+    "prime": 7,
+    "perf": [4, 5, 6]
+  },
+  "cpuMasks": {
+    "allBig": "0xFC",
+    "upperBig": "0xF0",
+    "prime": "0x80"
+  }
+}

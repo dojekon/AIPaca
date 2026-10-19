@@ -1,0 +1,51 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # jniLibs (~184 МБ) в git не коммитятся, но CI предполагает, что они уже
+      # на месте (артефакт workflow «Build engine» или ручная раскладка).
+      # Без них APK соберётся, но движок в него не попадёт — см. docs/BUILDING.md.
+      - name: Check engine jniLibs
+        run: |
+          if [ -z "$(ls -A app/src/main/jniLibs/arm64-v8a 2>/dev/null)" ]; then
+            echo "::warning::app/src/main/jniLibs/arm64-v8a пуст — APK будет без движка (docs/BUILDING.md)"
+          else
+            du -sh app/src/main/jniLibs/arm64-v8a
+          fi
+
+      - name: Unit tests, lint, assemble
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aipaca-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          retention-days: 14

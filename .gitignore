@@ -1,0 +1,15 @@
+*.iml
+*[Tt]odo*.md
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/app/build
+/.kotlin
+/.playwright-mcp
+/app/src/main/jniLibs/
+/captures
+.externalNativeBuild
+.cxx
+local.properties

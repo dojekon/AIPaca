@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "gemma-4-e2b/q4_0/sm8650-12gb-npu",
+  "backend": "hexagon",
+  "model": {
+    "family": "gemma-4-e2b",
+    "matchPatterns": ["gemma.?4.?e2b"],
+    "quants": ["Q4_0", "Q4_0_8_8", "Q4_0_4_4"]
+  },
+  "launch": {
+    "nCtx": 4096,
+    "threads": 4,
+    "cpuMask": "0xF0",
+    "nGpuLayers": 99,
+    "flashAttn": true,
+    "kvTypeK": "q8_0",
+    "kvTypeV": "q8_0",
+    "env": {
+      "GGML_HEXAGON_DEVICES": "HTP0",
+      "GGML_HEXAGON_POWER_MODE": "sustained_high_performance"
+    }
+  },
+  "expected": {
+    "tgTps": 20.0,
+    "ppTps": 500.0
+  },
+  "minAppVersion": "0.1.0",
+  "experimental": true
+}

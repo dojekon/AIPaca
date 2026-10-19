@@ -1,0 +1,4 @@
+llama.cpp HEAD: 23f7aabc16c72f6f707dba227251c35d7bd1ed96
+build date:     2026-10-16T23:59:03+03:00
+image:          ghcr.io/snapdragon-toolchain/arm64-android:v0.7
+preset:         arm64-android-snapdragon-release

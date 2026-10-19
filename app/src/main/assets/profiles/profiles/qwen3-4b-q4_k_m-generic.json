@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "qwen3-4b/q4_k_m/generic-arm64",
+  "backend": "cpu",
+  "model": {
+    "family": "qwen3-4b",
+    "matchPatterns": ["qwen3.?4b"],
+    "quants": ["Q4_K_M", "Q5_K_M", "Q4_K_S"]
+  },
+  "launch": {
+    "nCtx": 2048,
+    "threads": 4,
+    "nGpuLayers": 0
+  },
+  "expected": {
+    "tgTps": 8.0,
+    "ppTps": 40.0
+  },
+  "minAppVersion": "0.1.0"
+}

@@ -1,0 +1,111 @@
+# AGENTS.md
+
+Notes for AI agents working in this repository. Read before making code changes.
+
+## What this is
+
+AiPaca is an Android app (Kotlin, Compose, Room) for running GGUF models locally
+via `llama-server` on Snapdragon (arm64-v8a). Work plan and statuses — [todo.md](todo.md),
+architecture — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Commands
+
+```bash
+# Full check (required before completing any task)
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+# Test count (compare before/after — protection against "disappeared" tests)
+grep -o 'tests="[0-9]*"' app/build/test-results/testDebugUnitTest/*.xml | awk -F'"' '{s+=$2} END {print s}'
+
+# Install and smoke test
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.aipaca.android/.MainActivity
+adb logcat -d | grep -E "FATAL|AndroidRuntime" | head
+
+# Engine (only when changing the llama.cpp revision; slow, Docker)
+./scripts/build-engine.sh
+```
+
+Expected minimum: 330 tests, BUILD SUCCESSFUL, APK ~92 MB.
+
+## Code map
+
+- `AiPacaApp.kt` — `AppContainer`: DB, settings, engine, downloads, HF client, profiles.
+- `data/hf` — Hugging Face client (search/details/ggufFiles).
+- `data/download` — DownloadEngine (range parts, sha256), DownloadManager (states/resume),
+  DownloadService (FGS), DownloadWorker (WorkManager).
+- `data/profiles/remote` — ProfileFetcher/ProfileRepository (ETag cache, auto-refresh 24h/Wi-Fi).
+- `data/settings` — DataStore (`Settings`), TokenCipher (Keystore, `enc:v1:`).
+- `data/db` — Room v4, migrations `MIGRATION_1_2/2_3/3_4`.
+- `engine` — EngineManager (llama-server process), EngineService (START_STICKY),
+  BenchRunner (llama-bench), Preflight, `Accelerator`/`LaunchTarget` (CPU/GPU/NPU accelerator
+  selection and launch overrides), `profiles/ProfileMatcher` (profile matching),
+  `profiles/ProfilePolicy` (accelerator filter / CPU fallback).
+- `ui` — chat, models, search, bench, server, screens (DownloadsMenu/Settings/Server), common.
+
+## Conventions
+
+- Strings: every new one — in both `values/strings.xml` and `values-ru/strings.xml`.
+- Do not add code comments.
+- Do not commit `jniLibs` or other binary artifacts (excluded in `.gitignore`).
+- Room: when changing an entity — `version++` in `AiPacaDatabase` + a new `MIGRATION_X_Y`
+  + registration in `AiPacaApp.addMigrations`. User data must not be lost.
+- Icons: only `material-icons-core`. Anything missing (Bookmark, Stop, etc.) — declare
+  locally via `materialIcon {}` (examples: `ui/search/SearchScreen.kt`, `ui/models/ModelsScreen.kt`).
+- Extract business logic for tests into pure functions (examples: `parseBenchOutput`,
+  `resumableBytes`, `shouldAutoRefresh`) — tests are pure JVM, without Robolectric/Android context.
+- Update `todo.md` when closing items, record deviations there as well.
+
+## Pitfalls (verified in practice)
+
+- **Engine**: do not set `-Wl,-rpath,$ORIGIN` (breaks linking; no rpath is fine);
+  do not strip htp libraries (`libggml-htp-v73/75/79/81.so`) — `keepDebugSymbols` in build.gradle.kts;
+  the app sets `LD_LIBRARY_PATH`: `nativeLibraryDir:/vendor/lib64:/system/lib64`.
+- **HF API**: `?blobs=true` returns `size`/`lfs` inside `siblings` (the `blobs` array may be absent);
+  the parser must read both variants. `gated`: `true/false/auto/manual`.
+- **Resume**: source of truth — `download_parts.downloadedBytes` (Room v4) + `resumableBytes()`;
+  on resume, progress of unfinished parts must not be reset (regression fixed, tests exist).
+- **llama-bench**: table format changes between revisions; the parser reads columns by header
+  (`test`/`backend`/`ngl`), section selected by `ngl` (0=CPU, 99=OpenCL) — the `backend` column
+  is now always `OpenCL,HTP`.
+- **NPU works from the app**: FastRPC libraries (`libcdsprpc`, `libOpenCL`, `libvmem`,
+  `vendor.qti.hardware.dsp@1.0`) are staged by `NpuSupport.stage()` into `filesDir` and loaded
+  via `LD_LIBRARY_PATH` + `ADSP_LIBRARY_PATH=nativeLibraryDir`. Settings choice
+  (`Accelerator` CPU/GPU/NPU) → `LaunchTarget.apply()`: NPU adds `--device HTP0` and
+  `GGML_HEXAGON_DEVICES=HTP0`; if GPU/NPU fails, `ModelsViewModel` restarts the CPU profile
+  (see `models_gpu_fallback`/`models_npu_fallback`). Verified E2E in chat on S24U
+  (Qwen3-4B Q4_0 ~12–13 t/s; gemma-4-E2B Q4_0 ~20–24 t/s): NPU signs — cmdline `--device HTP0`, log
+  `load_tensors: ... HTP0 model buffer`, process RSS ~0.4 GB and CPU load ~40%
+  (vs ~2.8 GB and ~400% on CPU).
+- **OpenCL is unavailable from the app**: `ggml_opencl: platform IDs not available` in both
+  `untrusted_app` and `runas_app` — the platform is not enumerated, there is no `GPUOpenCL`
+  device, launch fails with `invalid device: GPUOpenCL`. Therefore the GPU setting falls back
+  to CPU automatically; OpenCL measurements are only possible outside the app.
+- **`--flash-attn` requires an explicit value**: in this llama.cpp revision
+  `--flash-attn [on|off|auto]` consumes the next token as its value
+  (`--flash-attn -ctk q8_0` → `unknown value for --flash-attn: '-ctk'` and immediate exit).
+  `ServerArgBuilder` must write `--flash-attn on`; all SM8650 profiles (flashAttn + quantized KV)
+  failed on this until the matcher stopped selecting them.
+- **run-as is not suitable for NPU tests**: `run-as` runs in the SELinux domain `runas_app`,
+  not `untrusted_app` — FastRPC HAL is unavailable (`open_device_node ... Permission denied`,
+  err 512 → arch v73 → HTP session 0x200). NPU can only be launched/verified from the app
+  itself; for manual FastRPC tests bypassing NPU, `GGML_HEXAGON_ARCH=75` works.
+- **Offload does not work without `--device`**: in this llama.cpp revision `-ngl N` applies
+  only to devices from `--device`/`-dev` (`act_gpu_layers = devices.empty() ? 0 : ...`),
+  so `LaunchTarget` always appends `--device GPUOpenCL` (GPU) or `--device HTP0` (NPU)
+  and strips existing `--device`/`-dev` from the profile's `extraArgs`.
+- **adb UI automation**: paths containing `~~`/`==` break the remote shell — write a script
+  to a file (`adb push` + `run-as sh script`); an open IME intercepts taps (for the test
+  `adb shell ime disable <id>`, then re-enable); dumps — `uiautomator dump`;
+  enter text — `adb shell input text` (`%s` instead of a space).
+- **DownloadManager**: takes the HF token from `SettingsRepository` itself; `IOException` → worker
+  retry, `IllegalStateException` (no space) → error without retry; a part is downloaded again if it
+  was truncated (part length mismatch is an error; the next run will resume).
+
+## Verification cycle
+
+1. `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — green.
+2. Test count has not decreased.
+3. `adb install -r` + smoke test (`am start`, logcat without FATAL).
+4. Functional check on device (when possible): resume with sha256, LAN curl, chat,
+   benchmark — methodology in the "Pitfalls" section.

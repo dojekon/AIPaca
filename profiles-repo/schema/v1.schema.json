@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AiPaca profiles schema v1",
+  "description": "Schema for the profiles index, per-device spec documents and per-profile launch documents.",
+  "oneOf": [
+    { "$ref": "#/definitions/index" },
+    { "$ref": "#/definitions/deviceSpec" },
+    { "$ref": "#/definitions/profileDoc" }
+  ],
+  "definitions": {
+    "index": {
+      "type": "object",
+      "required": ["devices", "profiles"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1, "default": 1 },
+        "updatedAt": { "type": ["string", "null"] },
+        "devices": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/deviceIndexEntry" }
+        },
+        "profiles": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/profileIndexEntry" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "deviceIndexEntry": {
+      "type": "object",
+      "required": ["key", "soc", "vendor", "ramGb", "file"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "soc": { "type": "string", "minLength": 1 },
+        "vendor": { "type": "string", "minLength": 1 },
+        "ramGb": { "type": "integer", "minimum": 1 },
+        "file": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "profileIndexEntry": {
+      "type": "object",
+      "required": ["id", "family", "device", "file"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "family": { "type": "string", "minLength": 1 },
+        "device": { "type": "string", "minLength": 1 },
+        "quants": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "file": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "deviceSpec": {
+      "type": "object",
+      "required": ["key", "soc", "vendor", "ramGb"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "soc": { "type": "string", "minLength": 1 },
+        "vendor": { "type": "string", "minLength": 1 },
+        "ramGb": { "type": "integer", "minimum": 1 },
+        "htpVersion": { "type": ["integer", "null"], "minimum": 68 },
+        "cores": {
+          "anyOf": [
+            { "$ref": "#/definitions/cores" },
+            { "type": "null" }
+          ]
+        },
+        "cpuMasks": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "cores": {
+      "type": "object",
+      "required": ["total"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 1 },
+        "big": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "default": []
+        },
+        "prime": { "type": ["integer", "null"], "minimum": 0 },
+        "perf": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "profileDoc": {
+      "type": "object",
+      "required": ["id", "backend", "model", "launch"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1, "default": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "backend": { "type": "string", "enum": ["cpu", "opencl", "hexagon"] },
+        "model": { "$ref": "#/definitions/modelMatch" },
+        "launch": { "$ref": "#/definitions/launch" },
+        "sampling": {
+          "anyOf": [
+            { "$ref": "#/definitions/sampling" },
+            { "type": "null" }
+          ]
+        },
+        "expected": {
+          "anyOf": [
+            { "$ref": "#/definitions/expected" },
+            { "type": "null" }
+          ]
+        },
+        "minAppVersion": { "type": ["string", "null"] },
+        "experimental": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": false
+    },
+    "modelMatch": {
+      "type": "object",
+      "required": ["family"],
+      "properties": {
+        "family": { "type": "string", "minLength": 1 },
+        "matchPatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "quants": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "launch": {
+      "type": "object",
+      "properties": {
+        "nCtx": { "type": "integer", "minimum": 128, "default": 4096 },
+        "threads": { "type": "integer", "minimum": 1, "default": 4 },
+        "cpuMask": { "type": ["string", "null"] },
+        "nGpuLayers": { "type": "integer", "minimum": 0, "default": 0 },
+        "flashAttn": { "type": "boolean", "default": false },
+        "kvTypeK": { "type": ["string", "null"] },
+        "kvTypeV": { "type": ["string", "null"] },
+        "batchSize": { "type": "integer", "minimum": 1, "default": 512 },
+        "ubatchSize": { "type": "integer", "minimum": 1, "default": 128 },
+        "mmap": { "type": "boolean", "default": true },
+        "extraArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "sampling": {
+      "type": "object",
+      "properties": {
+        "temperature": { "type": "number", "minimum": 0, "default": 0.7 },
+        "topP": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.95 },
+        "topK": { "type": "integer", "minimum": 0, "default": 40 },
+        "minP": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.05 },
+        "repeatPenalty": { "type": "number", "minimum": 0, "default": 1.1 }
+      },
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "properties": {
+        "tgTps": { "type": ["number", "null"] },
+        "ppTps": { "type": ["number", "null"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

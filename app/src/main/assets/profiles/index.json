@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-18",
+  "devices": [
+    {
+      "key": "qcom-sm8650/12gb",
+      "soc": "SM8650",
+      "vendor": "qcom",
+      "ramGb": 12,
+      "file": "devices/sm8650-12gb.json"
+    },
+    {
+      "key": "generic-arm64/8gb",
+      "soc": "generic-arm64",
+      "vendor": "other",
+      "ramGb": 8,
+      "file": "devices/generic-arm64-8gb.json"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "qwen3-4b/q4_0/sm8650-12gb",
+      "family": "qwen3-4b",
+      "device": "qcom-sm8650/12gb",
+      "quants": ["Q4_0", "Q4_0_8_8", "Q4_0_4_4"],
+      "file": "profiles/qwen3-4b-q4_0-sm8650.json"
+    },
+    {
+      "id": "qwen3-4b/q4_0/sm8650-12gb-npu",
+      "family": "qwen3-4b",
+      "device": "qcom-sm8650/12gb",
+      "quants": ["Q4_0"],
+      "file": "profiles/qwen3-4b-q4_0-sm8650-npu.json"
+    },
+    {
+      "id": "qwen3-4b/q4_k_m/generic-arm64",
+      "family": "qwen3-4b",
+      "device": "generic-arm64/8gb",
+      "quants": ["Q4_K_M", "Q5_K_M", "Q4_K_S"],
+      "file": "profiles/qwen3-4b-q4_k_m-generic.json"
+    },
+    {
+      "id": "llama-3.2-3b/q4_0/sm8650-12gb",
+      "family": "llama-3.2-3b",
+      "device": "qcom-sm8650/12gb",
+      "quants": ["Q4_0"],
+      "file": "profiles/llama-3.2-3b-q4_0-sm8650.json"
+    },
+    {
+      "id": "llama-3.2-3b/iq4_xs/generic-arm64",
+      "family": "llama-3.2-3b",
+      "device": "generic-arm64/8gb",
+      "quants": ["IQ4_XS", "Q4_K_M"],
+      "file": "profiles/llama-3.2-3b-iq4_xs-generic.json"
+    },
+    {
+      "id": "gemma-3-4b/q4_0/sm8650-12gb",
+      "family": "gemma-3-4b",
+      "device": "qcom-sm8650/12gb",
+      "quants": ["Q4_0"],
+      "file": "profiles/gemma-3-4b-q4_0-sm8650.json"
+    },
+    {
+      "id": "gemma-4-e2b/q4_0/sm8650-12gb-npu",
+      "family": "gemma-4-e2b",
+      "device": "qcom-sm8650/12gb",
+      "quants": ["Q4_0"],
+      "file": "profiles/gemma-4-e2b-q4_0-sm8650-npu.json"
+    },
+    {
+      "id": "default/generic-arm64",
+      "family": "default",
+      "device": "generic-arm64/8gb",
+      "quants": [],
+      "file": "profiles/default-generic.json"
+    }
+  ]
+}
