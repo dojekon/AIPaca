@@ -25,4 +25,7 @@ interface ModelDao {
 
     @Query("SELECT * FROM models WHERE path = :path")
     suspend fun getByPath(path: String): ModelEntity?
+
+    @Query("UPDATE models SET toolsSupported = :value WHERE path = :path")
+    suspend fun updateToolsSupported(path: String, value: Int?)
 }

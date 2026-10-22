@@ -131,4 +131,103 @@ class SseParserTest {
         assertEquals(ChatEvent.Ignored, parseSsePayload("[]"))
         assertEquals(ChatEvent.Ignored, parseSsePayload("42"))
     }
+
+    @Test
+    fun firstToolCallChunkIsParsedWithEmptyArguments() {
+        val event = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}}""" +
+                """]}}]}""",
+        )
+
+        assertEquals(ChatEvent.ToolCallDelta(0, "call_1", "get_weather", ""), event)
+    }
+
+    @Test
+    fun argumentOnlyToolCallChunkIsParsed() {
+        val event = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"index":0,"function":{"arguments":"{\"city\":\"Paris\"}"}}""" +
+                """]}}]}""",
+        )
+
+        assertEquals(ChatEvent.ToolCallDelta(0, null, null, """{"city":"Paris"}"""), event)
+    }
+
+    @Test
+    fun indexedToolCallsInSeparateChunksKeepTheirIndexes() {
+        val first = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"index":0,"id":"call_a","function":{"name":"first","arguments":""}}""" +
+                """]}}]}""",
+        )
+        val second = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"index":1,"id":"call_b","function":{"name":"second","arguments":"{}"}}""" +
+                """]}}]}""",
+        )
+
+        assertEquals(ChatEvent.ToolCallDelta(0, "call_a", "first", ""), first)
+        assertEquals(ChatEvent.ToolCallDelta(1, "call_b", "second", "{}"), second)
+    }
+
+    @Test
+    fun unicodeAndEscapedQuotesInArgumentsAreDecoded() {
+        val event = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"index":0,"function":{"arguments":"{\"q\":\"Привет \\\"мир\\\" 🌍\"}"}}""" +
+                """]}}]}""",
+        )
+
+        assertEquals(
+            ChatEvent.ToolCallDelta(0, null, null, """{"q":"Привет \"мир\" 🌍"}"""),
+            event,
+        )
+    }
+
+    @Test
+    fun contentTakesPriorityOverToolCallsInSameChunk() {
+        val event = parseSsePayload(
+            """{"choices":[{"delta":{"content":"hello","tool_calls":[""" +
+                """{"index":0,"function":{"name":"f","arguments":"{}"}}""" +
+                """]}}]}""",
+        )
+
+        assertEquals(ChatEvent.Delta("hello"), event)
+    }
+
+    @Test
+    fun finishReasonToolCallsReturnsDoneWithoutTimings() {
+        val event = parseSsePayload("""{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""")
+
+        assertEquals(ChatEvent.Done(null), event)
+    }
+
+    @Test
+    fun missingToolCallIndexDefaultsToZero() {
+        val event = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"id":"call_x","function":{"name":"f","arguments":"{}"}}""" +
+                """]}}]}""",
+        )
+
+        assertEquals(ChatEvent.ToolCallDelta(0, "call_x", "f", "{}"), event)
+    }
+
+    @Test
+    fun emptyOrNonStringArgumentsProduceEmptyArgsChunk() {
+        val empty = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"index":0,"function":{"name":"f","arguments":""}}""" +
+                """]}}]}""",
+        )
+        val nonString = parseSsePayload(
+            """{"choices":[{"delta":{"tool_calls":[""" +
+                """{"index":0,"function":{"name":"f","arguments":123}}""" +
+                """]}}]}""",
+        )
+
+        assertEquals(ChatEvent.ToolCallDelta(0, null, "f", ""), empty)
+        assertEquals(ChatEvent.ToolCallDelta(0, null, "f", ""), nonString)
+    }
 }

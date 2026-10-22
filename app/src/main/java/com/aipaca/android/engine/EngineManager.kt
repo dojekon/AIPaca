@@ -53,6 +53,9 @@ class EngineManager(context: Context) {
             else -> null
         }
 
+    val contextSize: Int?
+        get() = synchronized(lock) { currentDoc?.launch?.nCtx }
+
     suspend fun load(
         modelPath: String,
         doc: ProfileDoc,

@@ -16,4 +16,6 @@ data class MessageEntity(
     val tokensOut: Int? = null,
     val tps: Double? = null,
     val modelId: Long? = null,
+    val toolCalls: String? = null,
+    val toolCallId: String? = null,
 )

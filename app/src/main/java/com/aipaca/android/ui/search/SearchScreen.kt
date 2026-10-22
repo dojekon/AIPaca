@@ -57,6 +57,7 @@ import com.aipaca.android.data.db.entity.BookmarkEntity
 import com.aipaca.android.data.hf.HfGgufFile
 import com.aipaca.android.data.hf.HfModelSummary
 import com.aipaca.android.data.hf.RamFit
+import com.aipaca.android.data.hf.detectTools
 import com.aipaca.android.data.hf.quantFromFileName
 import com.aipaca.android.data.hf.ramFitFor
 import kotlinx.coroutines.launch
@@ -77,6 +78,7 @@ fun SearchScreen(
     val detailsOf by viewModel.detailsOf.collectAsStateWithLifecycle()
     val loadingDetails by viewModel.loadingDetails.collectAsStateWithLifecycle()
     val detailFiles by viewModel.detailFiles.collectAsStateWithLifecycle()
+    val detailsTools by viewModel.detailsTools.collectAsStateWithLifecycle()
     val detailsError by viewModel.detailsError.collectAsStateWithLifecycle()
     val downloadingUrls by viewModel.downloadingUrls.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
@@ -116,6 +118,7 @@ fun SearchScreen(
                     loading = loadingDetails,
                     files = detailFiles,
                     detailsError = detailsError,
+                    toolsSupported = detailsTools,
                     downloadingUrls = downloadingUrls,
                     bookmarked = openRepoId in bookmarkedIds,
                     onToggleBookmark = { viewModel.toggleBookmark(openRepoId) },
@@ -255,6 +258,7 @@ private fun ResultCard(
     onToggleBookmark: () -> Unit,
     onClick: () -> Unit,
 ) {
+    val tools = detectTools(model.tags, emptyList(), null) == true
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(
@@ -280,6 +284,10 @@ private fun ResultCard(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (tools) {
+                        Spacer(Modifier.width(12.dp))
+                        Badge(text = stringResource(R.string.search_tools_badge))
+                    }
                 }
             }
             BookmarkButton(
@@ -309,6 +317,7 @@ private fun ColumnScope.RepoDetails(
     loading: Boolean,
     files: List<HfGgufFile>,
     detailsError: String?,
+    toolsSupported: Boolean?,
     downloadingUrls: Set<String>,
     bookmarked: Boolean,
     onToggleBookmark: () -> Unit,
@@ -329,6 +338,10 @@ private fun ColumnScope.RepoDetails(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        if (toolsSupported == true) {
+            Spacer(Modifier.width(6.dp))
+            Badge(text = stringResource(R.string.search_tools_badge))
+        }
         BookmarkButton(bookmarked = bookmarked, onClick = onToggleBookmark)
     }
     Spacer(Modifier.height(4.dp))
@@ -353,6 +366,7 @@ private fun ColumnScope.RepoDetails(
                 FileCard(
                     file = file,
                     downloading = file.fileName in downloadingUrls,
+                    toolsSupported = toolsSupported,
                     onDownload = { onDownload(file) },
                 )
             }
@@ -364,6 +378,7 @@ private fun ColumnScope.RepoDetails(
 private fun FileCard(
     file: HfGgufFile,
     downloading: Boolean,
+    toolsSupported: Boolean?,
     onDownload: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -385,6 +400,10 @@ private fun FileCard(
                 quantFromFileName(file.fileName)?.let { quant ->
                     Spacer(Modifier.width(6.dp))
                     Badge(text = quant)
+                }
+                if (toolsSupported == true) {
+                    Spacer(Modifier.width(6.dp))
+                    Badge(text = stringResource(R.string.search_tools_badge))
                 }
                 if (npuReady(listOf(file))) {
                     Spacer(Modifier.width(6.dp))

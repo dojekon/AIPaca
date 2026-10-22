@@ -9,6 +9,12 @@ import kotlinx.serialization.json.intOrNull
 
 sealed interface ChatEvent {
     data class Delta(val text: String, val isReasoning: Boolean = false) : ChatEvent
+    data class ToolCallDelta(
+        val index: Int,
+        val id: String? = null,
+        val name: String? = null,
+        val argsChunk: String = "",
+    ) : ChatEvent
     data class Done(val timings: ChatTimings?) : ChatEvent
     data object Ignored : ChatEvent
 }
@@ -34,7 +40,11 @@ fun parseSsePayload(data: String): ChatEvent {
     val reasoning = chunk.deltaText("reasoning_content")
     if (!reasoning.isNullOrEmpty()) return ChatEvent.Delta(reasoning, isReasoning = true)
 
+    chunk.toolCallDeltaOrNull()?.let { return it }
+
     chunk.timingsOrNull()?.let { return ChatEvent.Done(it) }
+
+    if (chunk.finishReason() == "tool_calls") return ChatEvent.Done(null)
 
     return ChatEvent.Ignored
 }
@@ -46,6 +56,38 @@ private fun JsonObject.deltaText(field: String): String? {
     val content = delta[field] as? JsonPrimitive ?: return null
     if (!content.isString) return null
     return content.content
+}
+
+private fun JsonObject.toolCallDeltaOrNull(): ChatEvent.ToolCallDelta? {
+    val delta = firstDelta() ?: return null
+    val toolCalls = delta["tool_calls"] as? JsonArray ?: return null
+    val call = toolCalls.firstOrNull() as? JsonObject ?: return null
+    val index = (call["index"] as? JsonPrimitive)?.intOrNull ?: 0
+    val id = (call["id"] as? JsonPrimitive)?.stringContentOrNull()
+    val function = call["function"] as? JsonObject
+    val name = (function?.get("name") as? JsonPrimitive)?.stringContentOrNull()
+    val argsChunk = (function?.get("arguments") as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+    return ChatEvent.ToolCallDelta(index = index, id = id, name = name, argsChunk = argsChunk)
+}
+
+private fun JsonObject.finishReason(): String? {
+    val choice = firstChoice() ?: return null
+    return (choice["finish_reason"] as? JsonPrimitive)?.stringContentOrNull()
+}
+
+private fun JsonObject.firstChoice(): JsonObject? {
+    val choices = this["choices"] as? JsonArray ?: return null
+    return choices.firstOrNull() as? JsonObject
+}
+
+private fun JsonObject.firstDelta(): JsonObject? {
+    val choice = firstChoice() ?: return null
+    return choice["delta"] as? JsonObject
+}
+
+private fun JsonPrimitive.stringContentOrNull(): String? {
+    if (!isString) return null
+    return content.takeIf { it.isNotEmpty() }
 }
 
 private fun JsonObject.timingsOrNull(): ChatTimings? {

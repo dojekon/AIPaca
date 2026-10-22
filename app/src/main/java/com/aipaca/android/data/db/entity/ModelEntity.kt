@@ -15,4 +15,5 @@ data class ModelEntity(
     val paramsB: Double? = null,
     val addedAt: Long,
     val lastUsedAt: Long? = null,
+    val toolsSupported: Int? = null,
 )

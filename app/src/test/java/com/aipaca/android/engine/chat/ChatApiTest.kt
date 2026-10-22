@@ -68,4 +68,49 @@ class ChatApiTest {
 
         assertNull(request.maxTokens)
     }
+
+    @Test
+    fun toolsDefaultToEmptyList() {
+        val request = ChatRequest(messages = emptyList(), systemPrompt = null)
+
+        assertEquals(emptyList<ToolDef>(), request.tools)
+    }
+
+    @Test
+    fun toolChoiceDefaultsToNull() {
+        val request = ChatRequest(messages = emptyList(), systemPrompt = null)
+
+        assertNull(request.toolChoice)
+    }
+
+    @Test
+    fun reasoningBudgetDefaultsToNull() {
+        val request = ChatRequest(messages = emptyList(), systemPrompt = null)
+
+        assertNull(request.reasoningBudget)
+        assertNull(request.reasoningBudgetMessage)
+    }
+
+    @Test
+    fun chatStreamResultHasNoToolCallsByDefault() {
+        val result = ChatStreamResult(content = "hello", timings = null)
+
+        assertEquals(emptyList<AssembledToolCall>(), result.toolCalls)
+    }
+
+    @Test
+    fun requestKeepsToolSchemaString() {
+        val schema = """{"type":"object","properties":{"city":{"type":"string"}}}"""
+        val tool = ToolDef(name = "weather", description = "Get weather", parametersJsonSchema = schema)
+        val request = ChatRequest(
+            messages = emptyList(),
+            systemPrompt = null,
+            tools = listOf(tool),
+            toolChoice = "auto",
+        )
+
+        assertEquals(listOf(tool), request.tools)
+        assertEquals(schema, request.tools.single().parametersJsonSchema)
+        assertEquals("auto", request.toolChoice)
+    }
 }

@@ -9,8 +9,12 @@ import com.aipaca.android.AppContainer
 import com.aipaca.android.data.db.AiPacaDatabase
 import com.aipaca.android.data.db.entity.ModelEntity
 import com.aipaca.android.data.download.DownloadManager
+import com.aipaca.android.data.hf.HfApi
+import com.aipaca.android.data.hf.detectTools
 import com.aipaca.android.data.hf.quantFromFileName
+import com.aipaca.android.data.hf.toolsSupportedValue
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +25,7 @@ import kotlinx.coroutines.launch
 class DownloadsViewModel(
     database: AiPacaDatabase,
     private val downloadManager: DownloadManager,
+    private val hfApi: HfApi,
 ) : ViewModel() {
 
     data class DownloadItem(
@@ -98,6 +103,22 @@ class DownloadsViewModel(
         if (modelDao.getByPath(targetPath) != null) return
         val file = File(targetPath)
         if (!file.isFile) return
+        val toolsSupported = if (modelKey.isBlank()) {
+            null
+        } else {
+            try {
+                val details = hfApi.modelDetails(modelKey).getOrNull()
+                val template = hfApi.fetchChatTemplate(modelKey).getOrNull()
+                val detected = details?.let {
+                    detectTools(it.tags, it.siblings.map { sibling -> sibling.rfilename }, template)
+                }
+                toolsSupportedValue(detected)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        }
         modelDao.insert(
             ModelEntity(
                 repoId = modelKey.ifBlank { null },
@@ -106,6 +127,7 @@ class DownloadsViewModel(
                 sizeBytes = if (totalBytes > 0L) totalBytes else file.length(),
                 quant = quantFromFileName(file.name),
                 addedAt = completedAt ?: System.currentTimeMillis(),
+                toolsSupported = toolsSupported,
             ),
         )
     }
@@ -116,7 +138,7 @@ class DownloadsViewModel(
 
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                DownloadsViewModel(container.database, container.downloadManager)
+                DownloadsViewModel(container.database, container.downloadManager, container.hfApi)
             }
         }
     }

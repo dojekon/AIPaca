@@ -26,22 +26,36 @@ adb logcat -d | grep -E "FATAL|AndroidRuntime" | head
 ./scripts/build-engine.sh
 ```
 
-Expected minimum: 330 tests, BUILD SUCCESSFUL, APK ~92 MB.
+Expected minimum: 549 tests, BUILD SUCCESSFUL, APK ~92 MB. The full check above is still
+required before completing any task.
 
 ## Code map
 
 - `AiPacaApp.kt` — `AppContainer`: DB, settings, engine, downloads, HF client, profiles.
-- `data/hf` — Hugging Face client (search/details/ggufFiles).
+- `data/hf` — Hugging Face client (search/details/ggufFiles); raw-file fetch of chat templates
+  (`tokenizer_config.json`, `chat_template.jinja`) and `ToolSupport.detectTools()` — Tools-support
+  detection (tags / template file / tool markers in template text).
 - `data/download` — DownloadEngine (range parts, sha256), DownloadManager (states/resume),
   DownloadService (FGS), DownloadWorker (WorkManager).
 - `data/profiles/remote` — ProfileFetcher/ProfileRepository (ETag cache, auto-refresh 24h/Wi-Fi).
 - `data/settings` — DataStore (`Settings`), TokenCipher (Keystore, `enc:v1:`).
-- `data/db` — Room v4, migrations `MIGRATION_1_2/2_3/3_4`.
+- `data/db` — Room v5, migrations `MIGRATION_1_2/2_3/3_4/4_5`; v5 adds `chats.mode`
+  (`'chat'`/`'agent'`), `messages.toolCalls`/`toolCallId`, `models.toolsSupported`
+  (null=unknown, 0/1).
 - `engine` — EngineManager (llama-server process), EngineService (START_STICKY),
   BenchRunner (llama-bench), Preflight, `Accelerator`/`LaunchTarget` (CPU/GPU/NPU accelerator
   selection and launch overrides), `profiles/ProfileMatcher` (profile matching),
   `profiles/ProfilePolicy` (accelerator filter / CPU fallback).
-- `ui` — chat, models, search, bench, server, screens (DownloadsMenu/Settings/Server), common.
+- `engine/chat` — `ChatClient` (streaming POST, SSE), `ChatApi` (`ToolDef`, `tools` request field,
+  `toolCallId`/`toolCalls` on messages), `SseParser` (`delta.tool_calls` → `ChatEvent.ToolCallDelta`),
+  `ToolCallAssembler` (index-keyed assembly of streamed calls), `ChatStreamer` interface.
+- `engine/agent` — `AgentLoop` (sequential tool calls, `maxIterations`), `tools/` (sandbox +
+  list/find/grep/read/write/edit/fetch), `AgentToolRegistry`, `AgentSystemPrompt` (pi-style),
+  `ContextBudget`/`HistoryTrim`/`Compaction`, `ModelToolProbe` (`/props` truth-check),
+  `AgentMessageCodec`/`AgentMessages`/`AgentReducers` (pure loop reducers).
+- `ui` — chat, models, search, bench, server, screens (DownloadsMenu/Settings/Server), common;
+  drawer `Chat | Agent` mode toggle + mode-filtered history (`ChatDao.observeForMode`), agent tool
+  cards/steps in `ChatScreen`, Tools badges in Search/Details/Models.
 
 ## Conventions
 
@@ -101,6 +115,19 @@ Expected minimum: 330 tests, BUILD SUCCESSFUL, APK ~92 MB.
 - **DownloadManager**: takes the HF token from `SettingsRepository` itself; `IOException` → worker
   retry, `IllegalStateException` (no space) → error without retry; a part is downloaded again if it
   was truncated (part length mismatch is an error; the next run will resume).
+- **Tool calling depends on the GGUF chat template**: llama.cpp has native parsers for popular
+  families, but a model without tool markers in its template just answers in text — the Tools badge
+  is a heuristic (tags/template file/markers) and the `/props` probe (`ModelToolProbe`) is the
+  truth-check that downgrades/keeps `models.toolsSupported`.
+- **Reasoning budget is per request**: `reasoning_budget_tokens` (default 512, `0` = off) is sent in
+  both chat and agent bodies together with `reasoning_budget_message`; title/compaction keep
+  `enable_thinking=false` and no budget.
+- **Agent tools run without approval** (pi-style): safety comes from the `filesDir/agent` sandbox
+  (`resolveInSandbox` rejects absolute/`..`/symlink escapes) and per-tool caps (read ~256 KB,
+  fetch 30 s / 64 KB); result persisted per tool message is capped ~16 KB.
+- **Agent context budget uses chars/4** (`estimateTokens`) plus a reserve for system+tools; when it
+  overflows, `trimHistory` drops tool results first, then `Compaction` auto-summarizes older history
+  into a `role='system'` row (divider in UI) — NPU profiles (`nCtx` 4096) hit this quickly.
 
 ## Verification cycle
 

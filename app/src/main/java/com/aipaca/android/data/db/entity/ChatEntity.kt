@@ -11,4 +11,10 @@ data class ChatEntity(
     val paramsJson: String? = null,
     val createdAt: Long,
     val updatedAt: Long,
+    val mode: String = ChatMode.CHAT,
 )
+
+object ChatMode {
+    const val CHAT = "chat"
+    const val AGENT = "agent"
+}

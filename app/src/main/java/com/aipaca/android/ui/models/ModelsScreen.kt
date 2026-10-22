@@ -401,6 +401,10 @@ private fun ModelRow(
                         Spacer(Modifier.width(8.dp))
                         QuantBadge(quant)
                     }
+                    if (model.toolsSupported == 1) {
+                        Spacer(Modifier.width(8.dp))
+                        Badge(stringResource(R.string.search_tools_badge))
+                    }
                 }
                 Text(
                     text = model.profileLabel ?: stringResource(R.string.models_no_profile),
@@ -445,12 +449,17 @@ private fun ModelRow(
 
 @Composable
 private fun QuantBadge(quant: String) {
+    Badge(quant)
+}
+
+@Composable
+private fun Badge(text: String) {
     Surface(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Text(
-            text = quant,
+            text = text,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),

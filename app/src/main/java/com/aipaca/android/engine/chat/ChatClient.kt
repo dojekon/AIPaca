@@ -9,12 +9,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,12 +24,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 private val json = Json
 
-class ChatClient(private val client: OkHttpClient = defaultClient()) {
+class ChatClient(private val client: OkHttpClient = defaultClient()) : ChatStreamer {
 
-    suspend fun stream(
+    override suspend fun stream(
         serverUrl: String,
         apiKey: String?,
         request: ChatRequest,
+        onToolCall: (ChatEvent.ToolCallDelta) -> Unit,
         onDelta: (String, Boolean) -> Unit,
     ): Result<ChatStreamResult> = withContext(Dispatchers.IO) {
         val call = client.newCall(buildRequest(serverUrl, apiKey, request, stream = true))
@@ -50,6 +53,7 @@ class ChatClient(private val client: OkHttpClient = defaultClient()) {
 
                 val content = StringBuilder()
                 var timings: ChatTimings? = null
+                val toolCalls = ToolCallAssembler()
 
                 while (true) {
                     val line = reader.readLine() ?: break
@@ -64,11 +68,16 @@ class ChatClient(private val client: OkHttpClient = defaultClient()) {
                         }
 
                         is ChatEvent.Done -> if (event.timings != null) timings = event.timings
+                        is ChatEvent.ToolCallDelta -> {
+                            onToolCall(event)
+                            toolCalls.add(event)
+                        }
+
                         ChatEvent.Ignored -> Unit
                     }
                 }
 
-                Result.success(ChatStreamResult(content.toString(), timings))
+                Result.success(ChatStreamResult(content.toString(), timings, toolCalls.finish()))
             }
         } catch (e: CancellationException) {
             call.cancel()
@@ -131,7 +140,7 @@ class ChatClient(private val client: OkHttpClient = defaultClient()) {
             .build()
     }
 
-    private fun buildRequestBody(chat: ChatRequest, stream: Boolean): String {
+    internal fun buildRequestBody(chat: ChatRequest, stream: Boolean): String {
         val payload = buildJsonObject {
             put("model", "local")
             putJsonArray("messages") {
@@ -139,6 +148,21 @@ class ChatClient(private val client: OkHttpClient = defaultClient()) {
                     addJsonObject {
                         put("role", message.role)
                         put("content", message.content)
+                        message.toolCallId?.let { put("tool_call_id", it) }
+                        message.toolCalls?.let { calls ->
+                            putJsonArray("tool_calls") {
+                                calls.forEach { call ->
+                                    addJsonObject {
+                                        put("id", call.id)
+                                        put("type", "function")
+                                        putJsonObject("function") {
+                                            put("name", call.name)
+                                            put("arguments", call.argumentsJson)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -149,8 +173,40 @@ class ChatClient(private val client: OkHttpClient = defaultClient()) {
             put("min_p", chat.minP)
             put("repeat_penalty", chat.repeatPenalty)
             chat.maxTokens?.let { put("max_tokens", it) }
+            if (chat.tools.isNotEmpty()) {
+                putJsonArray("tools") {
+                    chat.tools.forEach { tool ->
+                        addJsonObject {
+                            put("type", "function")
+                            putJsonObject("function") {
+                                put("name", tool.name)
+                                put("description", tool.description)
+                                put("parameters", parseSchema(tool.parametersJsonSchema))
+                            }
+                        }
+                    }
+                }
+                put("tool_choice", chat.toolChoice ?: "auto")
+            }
+            chat.enableThinking?.let { enabled ->
+                putJsonObject("chat_template_kwargs") {
+                    put("enable_thinking", enabled)
+                }
+            }
+            chat.reasoningBudget?.takeIf { it >= 0 }?.let { budget ->
+                put("reasoning_budget_tokens", budget)
+                chat.reasoningBudgetMessage?.takeIf { it.isNotBlank() }?.let {
+                    put("reasoning_budget_message", it)
+                }
+            }
         }
         return json.encodeToString(JsonObject.serializer(), payload)
+    }
+
+    private fun parseSchema(schema: String): JsonElement = try {
+        json.parseToJsonElement(schema)
+    } catch (_: Exception) {
+        JsonObject(emptyMap())
     }
 
     private fun parseCompletionContent(body: String): String? {

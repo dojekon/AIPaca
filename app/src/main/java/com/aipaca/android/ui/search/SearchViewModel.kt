@@ -12,6 +12,7 @@ import com.aipaca.android.data.download.DownloadManager
 import com.aipaca.android.data.hf.HfApi
 import com.aipaca.android.data.hf.HfGgufFile
 import com.aipaca.android.data.hf.HfModelSummary
+import com.aipaca.android.data.hf.detectTools
 import com.aipaca.android.data.hf.ggufFiles
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +50,9 @@ class SearchViewModel(
 
     private val _detailFiles = MutableStateFlow<List<HfGgufFile>>(emptyList())
     val detailFiles: StateFlow<List<HfGgufFile>> = _detailFiles.asStateFlow()
+
+    private val _detailsTools = MutableStateFlow<Boolean?>(null)
+    val detailsTools: StateFlow<Boolean?> = _detailsTools.asStateFlow()
 
     private val _detailsError = MutableStateFlow<String?>(null)
     val detailsError: StateFlow<String?> = _detailsError.asStateFlow()
@@ -102,15 +106,26 @@ class SearchViewModel(
         _detailsOf.value = repoId
         _loadingDetails.value = true
         _detailFiles.value = emptyList()
+        _detailsTools.value = null
         _detailsError.value = null
         detailsJob = viewModelScope.launch {
             val fetched = hfApi.modelDetails(repoId)
             if (!isActive) return@launch
-            fetched.fold(
-                onSuccess = { _detailFiles.value = it.ggufFiles(repoId) },
-                onFailure = { _detailsError.value = it.message ?: DETAILS_FAILED },
-            )
+            val details = fetched.getOrNull()
+            if (details == null) {
+                _detailsError.value = fetched.exceptionOrNull()?.message ?: DETAILS_FAILED
+                _loadingDetails.value = false
+                return@launch
+            }
+            _detailFiles.value = details.ggufFiles(repoId)
             _loadingDetails.value = false
+            val template = hfApi.fetchChatTemplate(repoId).getOrNull()
+            if (!isActive) return@launch
+            _detailsTools.value = detectTools(
+                details.tags,
+                details.siblings.map { it.rfilename },
+                template,
+            )
         }
     }
 
@@ -119,6 +134,7 @@ class SearchViewModel(
         _detailsOf.value = null
         _loadingDetails.value = false
         _detailFiles.value = emptyList()
+        _detailsTools.value = null
         _detailsError.value = null
     }
 

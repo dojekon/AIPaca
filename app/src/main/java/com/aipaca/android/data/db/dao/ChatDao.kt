@@ -26,6 +26,12 @@ interface ChatDao {
     @Query("SELECT * FROM chats WHERE id = :id")
     fun observeById(id: Long): Flow<ChatEntity?>
 
+    @Query("SELECT * FROM chats WHERE mode = :mode ORDER BY updatedAt DESC LIMIT :limit")
+    fun observeForMode(mode: String, limit: Int): Flow<List<ChatEntity>>
+
+    @Query("SELECT * FROM chats WHERE id = :id")
+    suspend fun getById(id: Long): ChatEntity?
+
     @Query("UPDATE chats SET updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateTimestamp(id: Long, updatedAt: Long)
 

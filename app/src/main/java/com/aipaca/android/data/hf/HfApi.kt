@@ -43,7 +43,44 @@ class HfApi(
             get(url, authHint = true) { body -> json.decodeFromString<HfModelDetails>(body) }
         }
 
+    suspend fun fetchRawFile(
+        repoId: String,
+        fileName: String,
+        maxBytes: Long = 512L * 1024L,
+    ): Result<String?> = withContext(Dispatchers.IO) {
+        val url = BASE_URL.toHttpUrl().newBuilder()
+            .apply { repoId.split('/').filter { it.isNotEmpty() }.forEach { addPathSegment(it) } }
+            .addPathSegment("resolve")
+            .addPathSegment("main")
+            .apply { fileName.split('/').filter { it.isNotEmpty() }.forEach { addPathSegment(it) } }
+            .build()
+        execute(url, authHint = true, nullOnNotFound = true) { response ->
+            val text = response.peekBody(maxBytes).string()
+            text.takeIf { it.isNotBlank() }
+        }
+    }
+
+    suspend fun fetchChatTemplate(repoId: String): Result<String?> = withContext(Dispatchers.IO) {
+        val fromTokenizer = fetchRawFile(repoId, "tokenizer_config.json")
+            .getOrNull()
+            ?.let { extractChatTemplate(it) }
+            ?.takeIf { it.isNotBlank() }
+        if (fromTokenizer != null) return@withContext Result.success(fromTokenizer)
+        val fromJinja = fetchRawFile(repoId, "chat_template.jinja")
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+        Result.success(fromJinja)
+    }
+
     private fun <T> get(url: HttpUrl, authHint: Boolean = false, parse: (String) -> T): Result<T> =
+        execute(url, authHint) { response -> parse(response.body?.string().orEmpty()) }
+
+    private fun <T> execute(
+        url: HttpUrl,
+        authHint: Boolean,
+        nullOnNotFound: Boolean = false,
+        parse: (okhttp3.Response) -> T,
+    ): Result<T> =
         try {
             val request = Request.Builder()
                 .url(url)
@@ -53,10 +90,11 @@ class HfApi(
                 }
                 .build()
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Result.failure(IOException(errorMessage(response.code, authHint)))
-                } else {
-                    Result.success(parse(response.body?.string().orEmpty()))
+                when {
+                    nullOnNotFound && response.code == 404 -> Result.success(null as T)
+                    !response.isSuccessful ->
+                        Result.failure(IOException(errorMessage(response.code, authHint)))
+                    else -> Result.success(parse(response))
                 }
             }
         } catch (e: CancellationException) {

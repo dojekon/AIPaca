@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +27,9 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
@@ -35,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +58,7 @@ import androidx.navigation.navArgument
 import com.aipaca.android.AppContainer
 import com.aipaca.android.R
 import com.aipaca.android.data.db.entity.ChatEntity
+import com.aipaca.android.data.db.entity.ChatMode
 import com.aipaca.android.ui.bench.BenchScreen
 import com.aipaca.android.ui.chat.ChatScreen
 import com.aipaca.android.ui.chat.ChatViewModel
@@ -69,6 +75,10 @@ import kotlinx.coroutines.launch
 
 private const val DRAWER_CHATS_LIMIT = 20
 private val DRAWER_CHAT_MENU_WIDTH = 48.dp
+private val DRAWER_MODE_OPTIONS = listOf(
+    ChatMode.CHAT to R.string.drawer_mode_chat,
+    ChatMode.AGENT to R.string.drawer_mode_agent,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,8 +101,11 @@ fun AppRoot(container: AppContainer) {
         scope.launch { container.profileRepository.maybeAutoRefresh() }
     }
 
-    val chats by container.database.chatDao().observeAll()
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    var drawerMode by rememberSaveable { mutableStateOf(ChatMode.CHAT) }
+    val chatsFlow = remember(drawerMode) {
+        container.database.chatDao().observeForMode(drawerMode, DRAWER_CHATS_LIMIT)
+    }
+    val chats by chatsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var chatMenuId by remember { mutableStateOf<Long?>(null) }
     var renameTarget by remember { mutableStateOf<ChatEntity?>(null) }
@@ -163,10 +176,27 @@ fun AppRoot(container: AppContainer) {
                         )
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                    ) {
+                        DRAWER_MODE_OPTIONS.forEachIndexed { index, (mode, labelRes) ->
+                            SegmentedButton(
+                                selected = drawerMode == mode,
+                                onClick = { drawerMode = mode },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = DRAWER_MODE_OPTIONS.size,
+                                ),
+                                label = { Text(stringResource(labelRes)) },
+                            )
+                        }
+                    }
                     NavigationDrawerItem(
                         label = { Text(stringResource(R.string.menu_new_chat)) },
                         selected = activeChatId == 0L,
-                        onClick = { openChat(0L) },
+                        onClick = { goToNewChat() },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
                     )
                     Spacer(Modifier.height(12.dp))
@@ -183,7 +213,7 @@ fun AppRoot(container: AppContainer) {
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                     } else {
-                        chats.take(DRAWER_CHATS_LIMIT).forEach { chat ->
+                        chats.forEach { chat ->
                             Box(modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)) {
                                 NavigationDrawerItem(
                                     label = {
@@ -278,7 +308,10 @@ fun AppRoot(container: AppContainer) {
                     ChatScreen(
                         onOpenDrawer = { scope.launch { drawerState.open() } },
                         onChatDeleted = { goToNewChat() },
-                        viewModel = viewModel(factory = ChatViewModel.factory(0L)),
+                        viewModel = viewModel(
+                            key = "chat-${drawerMode}",
+                            factory = ChatViewModel.factory(0L, drawerMode),
+                        ),
                     )
                 }
                 composable(
@@ -290,12 +323,16 @@ fun AppRoot(container: AppContainer) {
                         },
                     ),
                 ) { entry ->
+                    val chatId = entry.arguments?.getLong(Destinations.CHAT_ID_ARG) ?: 0L
+                    val newChat = chatId == 0L
                     ChatScreen(
                         onOpenDrawer = { scope.launch { drawerState.open() } },
                         onChatDeleted = { goToNewChat() },
                         viewModel = viewModel(
+                            key = if (newChat) "chat-$drawerMode" else "chat-$chatId",
                             factory = ChatViewModel.factory(
-                                entry.arguments?.getLong(Destinations.CHAT_ID_ARG) ?: 0L,
+                                chatId,
+                                if (newChat) drawerMode else ChatMode.CHAT,
                             ),
                         ),
                     )

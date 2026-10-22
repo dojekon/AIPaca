@@ -35,6 +35,7 @@ fun buildTitleRequest(userMessage: String, assistantMessage: String): ChatReques
     systemPrompt = TITLE_SYSTEM_PROMPT,
     temperature = TITLE_TEMPERATURE,
     maxTokens = TITLE_MAX_TOKENS,
+    enableThinking = false,
 )
 
 fun sanitizeGeneratedTitle(raw: String?): String? {

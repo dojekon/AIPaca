@@ -20,6 +20,7 @@
     <string name="language_russian">Русский</string>
     <string name="language_english">English</string>
     <string name="about_version_label">Версия</string>
+    <string name="about_agent_privacy">Режим агента: инструменты выполняются без подтверждения в приватной песочнице приложения; инструмент fetch может обращаться к любому http(s)-адресу.</string>
     <string name="engine_channel_name">Движок</string>
     <string name="engine_notification_loading">Модель загружается…</string>
     <string name="engine_notification_ready">Сервер готов</string>
@@ -76,6 +77,9 @@
     <string name="chat_param_top_k">Top K</string>
     <string name="chat_param_min_p">Min P</string>
     <string name="chat_param_repeat_penalty">Штраф за повторы</string>
+    <string name="chat_param_reasoning_budget">Лимит размышлений</string>
+    <string name="chat_reasoning_off">Выкл.</string>
+    <string name="chat_reasoning_tokens">%1$d токенов</string>
     <string name="chat_reset">Сбросить</string>
     <string name="chat_error_engine_off">Движок не готов. Сначала загрузите модель.</string>
     <string name="chat_error_send">Не удалось получить ответ</string>
@@ -159,6 +163,7 @@
     <string name="search_downloads">Загрузок: %1$s</string>
     <string name="search_likes">Лайков: %1$s</string>
     <string name="search_npu_ready">NPU-ready</string>
+    <string name="search_tools_badge">Инструменты</string>
     <string name="search_download">Скачать</string>
     <string name="search_in_downloads">В загрузках</string>
     <string name="search_added_downloads">Добавлено в загрузки</string>
@@ -218,4 +223,22 @@
     <string name="search_bookmark_add">Добавить в закладки</string>
     <string name="search_bookmark_remove">Удалить из закладок</string>
     <string name="search_bookmarks">Закладки</string>
+    <string name="chat_agent_badge">Агент</string>
+    <string name="drawer_mode_agent">Агент</string>
+    <string name="drawer_mode_chat">Чат</string>
+    <string name="agent_error_max_iterations">Агент остановлен: достигнут лимит шагов</string>
+    <string name="agent_error_compaction">Не удалось сжать контекст</string>
+    <string name="agent_tool_running">Выполняется</string>
+    <string name="agent_tool_done">Готово</string>
+    <string name="agent_tool_error">Ошибка</string>
+    <string name="agent_tool_cancelled">Отменено</string>
+    <string name="agent_tool_args">Аргументы</string>
+    <string name="agent_tool_result">Результат</string>
+    <string name="agent_tool_no_result">Нет результата</string>
+    <string name="agent_result_copy">Копировать результат</string>
+    <string name="agent_step">Шаг %1$d/%2$d</string>
+    <string name="agent_iterations">Максимум шагов</string>
+    <string name="agent_compact">Сжать контекст</string>
+    <string name="agent_compacting">Сжатие…</string>
+    <string name="agent_compaction_divider">Контекст сжат</string>
 </resources>

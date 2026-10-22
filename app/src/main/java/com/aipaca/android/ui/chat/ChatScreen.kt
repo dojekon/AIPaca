@@ -34,11 +34,13 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,11 +74,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aipaca.android.R
+import com.aipaca.android.data.db.entity.ChatMode
 import com.aipaca.android.engine.ThermalLevel
+import com.aipaca.android.engine.agent.AgentToolCall
+import com.aipaca.android.engine.agent.AgentToolPayload
+import com.aipaca.android.engine.agent.AgentToolStatus
+import com.aipaca.android.engine.agent.decodeToolResult
 import com.aipaca.android.engine.chat.ChatTimings
 import com.aipaca.android.engine.thermalLevelFor
 import com.aipaca.android.ui.common.ThermalWatcher
@@ -102,12 +110,16 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val streamingText by viewModel.streamingText.collectAsStateWithLifecycle()
     val streamingReasoning by viewModel.streamingReasoning.collectAsStateWithLifecycle()
+    val streamingToolCalls by viewModel.streamingToolCalls.collectAsStateWithLifecycle()
     val streamingMessageId by viewModel.streamingMessageId.collectAsStateWithLifecycle()
     val lastTimings by viewModel.lastTimings.collectAsStateWithLifecycle()
     val chatTitle by viewModel.title.collectAsStateWithLifecycle()
     val modelName by viewModel.modelName.collectAsStateWithLifecycle()
     val params by viewModel.params.collectAsStateWithLifecycle()
     val systemPrompt by viewModel.systemPrompt.collectAsStateWithLifecycle()
+    val mode by viewModel.mode.collectAsStateWithLifecycle()
+    val agentStep by viewModel.agentStep.collectAsStateWithLifecycle()
+    val compacting by viewModel.compacting.collectAsStateWithLifecycle()
 
     val thermalWatcher = remember(context) { ThermalWatcher(context) }
     val thermalStatus by thermalWatcher.status
@@ -152,12 +164,37 @@ fun ChatScreen(
     }
 
     val streaming = streamingText != null
-    val visibleMessages = remember(messages, streamingMessageId) {
-        messages.filter { it.id != streamingMessageId }
+    val ownedToolCallIds = remember(messages) {
+        messages
+            .filter { it.role == ChatViewModel.ROLE_ASSISTANT }
+            .flatMap { it.toolCalls }
+            .mapTo(mutableSetOf()) { it.id }
+    }
+    val orphanToolMessageIds = remember(messages, ownedToolCallIds) {
+        messages
+            .filter {
+                it.role == ChatViewModel.ROLE_TOOL &&
+                    (it.toolCallId == null || it.toolCallId !in ownedToolCallIds)
+            }
+            .mapTo(mutableSetOf()) { it.id }
+    }
+    val visibleMessages = remember(messages, streamingMessageId, orphanToolMessageIds) {
+        messages.filter {
+            it.id != streamingMessageId &&
+                (it.role != ChatViewModel.ROLE_TOOL || orphanToolMessageIds.contains(it.id))
+        }
     }
     val lastAssistantId = messages.lastOrNull { it.role == ChatViewModel.ROLE_ASSISTANT }?.id
     val canRegenerate = !streaming && messages.any { it.role == ChatViewModel.ROLE_ASSISTANT }
     val copiedMessage = stringResource(R.string.chat_copied)
+    val toolResults = remember(messages) {
+        messages
+            .filter { it.role == ChatViewModel.ROLE_TOOL }
+            .mapNotNull { m ->
+                m.toolCallId?.let { id -> id to decodeToolResult(m.content) }
+            }
+            .toMap()
+    }
 
     LaunchedEffect(visibleMessages.size, streaming) {
         if (followTail && (visibleMessages.isNotEmpty() || streaming)) {
@@ -171,11 +208,42 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = modelName ?: chatTitle ?: stringResource(R.string.chat_title_new),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = modelName ?: chatTitle ?: stringResource(R.string.chat_title_new),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (mode == ChatMode.AGENT) {
+                                Spacer(Modifier.width(8.dp))
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.chat_agent_badge),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
+                        }
+                        agentStep?.let { step ->
+                            Text(
+                                text = stringResource(
+                                    R.string.agent_step,
+                                    step.step,
+                                    step.maxIterations,
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onOpenDrawer) {
@@ -197,16 +265,18 @@ fun ChatScreen(
                             expanded = overflowOpen,
                             onDismissRequest = { overflowOpen = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.chat_regenerate)) },
-                                enabled = canRegenerate,
-                                onClick = {
-                                    overflowOpen = false
-                                    if (viewModel.regenerate()) {
-                                        followTail = true
-                                    }
-                                },
-                            )
+                            if (mode != ChatMode.AGENT) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.chat_regenerate)) },
+                                    enabled = canRegenerate,
+                                    onClick = {
+                                        overflowOpen = false
+                                        if (viewModel.regenerate()) {
+                                            followTail = true
+                                        }
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.chat_params)) },
                                 onClick = {
@@ -214,6 +284,23 @@ fun ChatScreen(
                                     paramsOpen = true
                                 },
                             )
+                            if (mode == ChatMode.AGENT) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (compacting) R.string.agent_compacting
+                                                else R.string.agent_compact,
+                                            ),
+                                        )
+                                    },
+                                    enabled = !compacting,
+                                    onClick = {
+                                        overflowOpen = false
+                                        viewModel.compact()
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.chat_rename)) },
                                 onClick = {
@@ -249,20 +336,48 @@ fun ChatScreen(
                         StreamingBubble(
                             text = streamingText.orEmpty(),
                             reasoning = streamingReasoning.orEmpty(),
+                            toolCalls = streamingToolCalls,
+                            onCopyToolResult = { text ->
+                                clipboard.setPrimaryClip(ClipData.newPlainText("tool", text))
+                                scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
+                            },
                         )
                     }
                 }
                 items(visibleMessages.asReversed(), key = { it.id }) { message ->
-                    MessageBubble(
-                        message = message,
-                        timings = if (message.id == lastAssistantId) lastTimings else null,
-                        onCopy = {
-                            clipboard.setPrimaryClip(
-                                ClipData.newPlainText(message.role, message.content),
-                            )
-                            scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
-                        },
-                    )
+                    if (message.role == ChatViewModel.ROLE_TOOL) {
+                        ToolCallCard(
+                            messageId = message.id,
+                            call = AgentToolCall(
+                                id = message.toolCallId ?: "",
+                                name = message.toolCallId ?: "tool",
+                                argsJson = "",
+                            ),
+                            result = decodeToolResult(message.content),
+                            onCopy = { text ->
+                                clipboard.setPrimaryClip(ClipData.newPlainText("tool", text))
+                                scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
+                            },
+                        )
+                    } else if (message.role == ChatViewModel.ROLE_SYSTEM) {
+                        CompactionDivider(message)
+                    } else {
+                        MessageBubble(
+                            message = message,
+                            timings = if (message.id == lastAssistantId) lastTimings else null,
+                            toolResults = toolResults,
+                            onCopy = {
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText(message.role, message.content),
+                                )
+                                scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
+                            },
+                            onCopyToolResult = { text ->
+                                clipboard.setPrimaryClip(ClipData.newPlainText("tool", text))
+                                scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
+                            },
+                        )
+                    }
                 }
             }
             InputRow(
@@ -288,11 +403,14 @@ fun ChatScreen(
             ParamsContent(
                 params = params,
                 systemPrompt = systemPrompt,
+                isAgent = mode == ChatMode.AGENT,
                 onTemperature = viewModel::updateTemperature,
                 onTopP = viewModel::updateTopP,
                 onTopK = viewModel::updateTopK,
                 onMinP = viewModel::updateMinP,
                 onRepeatPenalty = viewModel::updateRepeatPenalty,
+                onReasoningBudget = viewModel::updateReasoningBudget,
+                onMaxIterations = viewModel::updateMaxIterations,
                 onSystemPrompt = viewModel::updateSystemPrompt,
                 onReset = viewModel::resetParams,
             )
@@ -388,12 +506,51 @@ private fun InputRow(
     }
 }
 
+@Composable
+private fun CompactionDivider(message: ChatViewModel.MessageUi) {
+    var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HorizontalDivider(Modifier.weight(1f))
+            Text(
+                text = stringResource(R.string.agent_compaction_divider),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+            HorizontalDivider(Modifier.weight(1f))
+        }
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            SelectionContainer {
+                Text(
+                    text = message.content,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
     message: ChatViewModel.MessageUi,
     timings: ChatTimings?,
+    toolResults: Map<String, AgentToolPayload?>,
     onCopy: () -> Unit,
+    onCopyToolResult: (String) -> Unit,
 ) {
     val isUser = message.role == ChatViewModel.ROLE_USER
     var menuOpen by remember { mutableStateOf(false) }
@@ -446,6 +603,24 @@ private fun MessageBubble(
                         modifier = Modifier.padding(horizontal = 4.dp),
                     )
                 }
+                if (message.toolCalls.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Column(
+                        modifier = Modifier
+                            .widthIn(max = BUBBLE_MAX_WIDTH)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        message.toolCalls.forEach { call ->
+                            ToolCallCard(
+                                messageId = message.id,
+                                call = call,
+                                result = toolResults[call.id],
+                                onCopy = onCopyToolResult,
+                            )
+                        }
+                    }
+                }
             }
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -456,6 +631,113 @@ private fun MessageBubble(
                     onCopy()
                 },
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ToolCallCard(
+    messageId: Long,
+    call: AgentToolCall,
+    result: AgentToolPayload?,
+    onCopy: (String) -> Unit,
+    initiallyExpanded: Boolean = false,
+) {
+    var expanded by rememberSaveable(messageId, call.id, initiallyExpanded) {
+        mutableStateOf(initiallyExpanded)
+    }
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { expanded = !expanded },
+                onLongClick = { onCopy(result?.output ?: call.argsJson) },
+            ),
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (result == null) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (result.status == AgentToolStatus.OK) {
+                            Icons.Filled.Check
+                        } else {
+                            Icons.Filled.Close
+                        },
+                        contentDescription = null,
+                        tint = when (result.status) {
+                            AgentToolStatus.OK -> MaterialTheme.colorScheme.tertiary
+                            AgentToolStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> MaterialTheme.colorScheme.error
+                        },
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = call.name,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = when {
+                        result == null -> stringResource(R.string.agent_tool_running)
+                        result.status == AgentToolStatus.OK -> stringResource(R.string.agent_tool_done)
+                        result.status == AgentToolStatus.CANCELLED -> stringResource(R.string.agent_tool_cancelled)
+                        else -> stringResource(R.string.agent_tool_error)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.agent_tool_args),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SelectionContainer {
+                    Text(
+                        text = call.argsJson,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.agent_tool_result),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SelectionContainer {
+                    Text(
+                        text = result?.output ?: stringResource(R.string.agent_tool_no_result),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            } else if (call.argsJson.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = call.argsJson,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -494,7 +776,12 @@ private fun ReasoningSpoiler(messageId: Long, reasoning: String) {
 }
 
 @Composable
-private fun StreamingBubble(text: String, reasoning: String) {
+private fun StreamingBubble(
+    text: String,
+    reasoning: String,
+    toolCalls: List<ChatViewModel.StreamingToolCallUi>,
+    onCopyToolResult: (String) -> Unit,
+) {
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
             shape = MaterialTheme.shapes.medium,
@@ -529,6 +816,24 @@ private fun StreamingBubble(text: String, reasoning: String) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (toolCalls.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        toolCalls.forEach { call ->
+                            ToolCallCard(
+                                messageId = -1L - call.index,
+                                call = AgentToolCall(
+                                    id = "stream-${call.index}",
+                                    name = call.name.ifBlank { "tool" },
+                                    argsJson = call.argsJson,
+                                ),
+                                result = null,
+                                onCopy = onCopyToolResult,
+                                initiallyExpanded = true,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -552,11 +857,14 @@ private fun messageStats(message: ChatViewModel.MessageUi, timings: ChatTimings?
 private fun ParamsContent(
     params: ChatViewModel.ChatParamsUi,
     systemPrompt: String,
+    isAgent: Boolean,
     onTemperature: (Double) -> Unit,
     onTopP: (Double) -> Unit,
     onTopK: (Int) -> Unit,
     onMinP: (Double) -> Unit,
     onRepeatPenalty: (Double) -> Unit,
+    onReasoningBudget: (Int) -> Unit,
+    onMaxIterations: (Int) -> Unit,
     onSystemPrompt: (String) -> Unit,
     onReset: () -> Unit,
 ) {
@@ -612,17 +920,41 @@ private fun ParamsContent(
             steps = PARAM_STEPS_REPEAT_PENALTY,
             onValueChange = { onRepeatPenalty(roundParam(it)) },
         )
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = systemPrompt,
-            onValueChange = onSystemPrompt,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.chat_system_prompt)) },
-            minLines = 3,
-            maxLines = 6,
+        ParamSlider(
+            label = stringResource(R.string.chat_param_reasoning_budget),
+            valueText = if (params.reasoningBudget == 0) {
+                stringResource(R.string.chat_reasoning_off)
+            } else {
+                stringResource(R.string.chat_reasoning_tokens, params.reasoningBudget)
+            },
+            value = params.reasoningBudget.toFloat(),
+            valueRange = 0f..2048f,
+            steps = REASONING_BUDGET_STEPS,
+            onValueChange = { onReasoningBudget((it / 128f).roundToInt() * 128) },
         )
+        if (isAgent) {
+            ParamSlider(
+                label = stringResource(R.string.agent_iterations),
+                valueText = params.maxIterations.toString(),
+                value = params.maxIterations.toFloat(),
+                valueRange = 1f..50f,
+                steps = 48,
+                onValueChange = { onMaxIterations(it.roundToInt()) },
+            )
+        }
+        if (!isAgent) {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = systemPrompt,
+                onValueChange = onSystemPrompt,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.chat_system_prompt)) },
+                minLines = 3,
+                maxLines = 6,
+            )
+        }
         Spacer(Modifier.height(16.dp))
         OutlinedButton(
             onClick = onReset,
@@ -676,3 +1008,4 @@ private const val PARAM_STEPS_0_1 = 19
 private const val PARAM_STEPS_0_2 = 19
 private const val PARAM_STEPS_TOP_K = 98
 private const val PARAM_STEPS_REPEAT_PENALTY = 29
+private const val REASONING_BUDGET_STEPS = 15

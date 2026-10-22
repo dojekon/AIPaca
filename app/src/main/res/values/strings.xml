@@ -20,6 +20,7 @@
     <string name="language_russian">Russian</string>
     <string name="language_english">English</string>
     <string name="about_version_label">Version</string>
+    <string name="about_agent_privacy">Agent mode: tools run without confirmation inside a private app sandbox; the fetch tool can request any http(s) URL.</string>
     <string name="engine_channel_name">Engine</string>
     <string name="engine_notification_loading">Model is loading…</string>
     <string name="engine_notification_ready">Server is ready</string>
@@ -76,6 +77,9 @@
     <string name="chat_param_top_k">Top K</string>
     <string name="chat_param_min_p">Min P</string>
     <string name="chat_param_repeat_penalty">Repeat penalty</string>
+    <string name="chat_param_reasoning_budget">Reasoning limit</string>
+    <string name="chat_reasoning_off">Off</string>
+    <string name="chat_reasoning_tokens">%1$d tokens</string>
     <string name="chat_reset">Reset</string>
     <string name="chat_error_engine_off">Engine is not ready. Load a model first.</string>
     <string name="chat_error_send">Could not get a response</string>
@@ -159,6 +163,7 @@
     <string name="search_downloads">%1$s downloads</string>
     <string name="search_likes">%1$s likes</string>
     <string name="search_npu_ready">NPU-ready</string>
+    <string name="search_tools_badge">Tools</string>
     <string name="search_download">Download</string>
     <string name="search_in_downloads">In downloads</string>
     <string name="search_added_downloads">Added to downloads</string>
@@ -218,4 +223,22 @@
     <string name="search_bookmark_add">Add to bookmarks</string>
     <string name="search_bookmark_remove">Remove from bookmarks</string>
     <string name="search_bookmarks">Bookmarks</string>
+    <string name="chat_agent_badge">Agent</string>
+    <string name="drawer_mode_agent">Agent</string>
+    <string name="drawer_mode_chat">Chat</string>
+    <string name="agent_error_max_iterations">Agent stopped: maximum number of steps reached</string>
+    <string name="agent_error_compaction">Could not compact the conversation</string>
+    <string name="agent_tool_running">Running</string>
+    <string name="agent_tool_done">Done</string>
+    <string name="agent_tool_error">Error</string>
+    <string name="agent_tool_cancelled">Cancelled</string>
+    <string name="agent_tool_args">Arguments</string>
+    <string name="agent_tool_result">Result</string>
+    <string name="agent_tool_no_result">No result</string>
+    <string name="agent_result_copy">Copy result</string>
+    <string name="agent_step">Step %1$d/%2$d</string>
+    <string name="agent_iterations">Max steps</string>
+    <string name="agent_compact">Compact context</string>
+    <string name="agent_compacting">Compacting…</string>
+    <string name="agent_compaction_divider">Context compacted</string>
 </resources>

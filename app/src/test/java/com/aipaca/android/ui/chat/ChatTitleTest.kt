@@ -149,4 +149,11 @@ class ChatTitleTest {
 
         assertEquals("u".repeat(500) + "\n" + "a".repeat(500), content)
     }
+
+    @Test
+    fun titleRequestDisablesModelThinking() {
+        val request = buildTitleRequest("Привет", "Здравствуйте")
+
+        assertEquals(false, request.enableThinking)
+    }
 }
