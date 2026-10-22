@@ -215,7 +215,7 @@ class ModelsViewModel(
                 return@launch
             }
             val ramError = withContext(Dispatchers.IO) {
-                ramErrorMessage(entity, LaunchTarget.apply(doc, accel).withContextSize(entity.nCtx).launch)
+                ramErrorMessage(entity, LaunchTarget.apply(doc, accel, device.htpVersion).withContextSize(entity.nCtx).launch)
             }
             if (ramError != null) {
                 _actionState.value = ActionState.Error(ramError)
@@ -223,7 +223,7 @@ class ModelsViewModel(
             }
             EngineService.start(appContext)
             val settings = container.settingsRepository.settings.first()
-            val launchDoc = LaunchTarget.apply(doc, accel).withContextSize(entity.nCtx)
+            val launchDoc = LaunchTarget.apply(doc, accel, device.htpVersion).withContextSize(entity.nCtx)
             val result = withContext(Dispatchers.IO) {
                 engineManager.load(
                     entity.path,
@@ -355,7 +355,7 @@ class ModelsViewModel(
             val doc = withContext(Dispatchers.IO) {
                 matcher.match(device, entity.fileName, null, accel).profile?.doc
             }
-            val launch = doc?.let { LaunchTarget.apply(it, accel).launch } ?: LaunchDoc()
+            val launch = doc?.let { LaunchTarget.apply(it, accel, device.htpVersion).launch } ?: LaunchDoc()
             val weights = File(entity.path).length()
             var metadataError: String? = null
             val meta = withContext(Dispatchers.IO) {

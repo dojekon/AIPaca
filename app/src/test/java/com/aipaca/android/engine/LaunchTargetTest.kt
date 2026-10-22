@@ -69,6 +69,31 @@ class LaunchTargetTest {
     }
 
     @Test
+    fun npuSetsHtpArchFromDevice() {
+        val applied = LaunchTarget.apply(openclDoc(), Accelerator.NPU, htpArch = 75)
+
+        assertEquals("75", applied.launch.env["GGML_HEXAGON_ARCH"])
+    }
+
+    @Test
+    fun profileHtpArchWinsOverDeviceTable() {
+        val doc = hexagonDoc().copy(
+            launch = hexagonDoc().launch.copy(env = mapOf("GGML_HEXAGON_ARCH" to "79")),
+        )
+
+        val applied = LaunchTarget.apply(doc, Accelerator.NPU, htpArch = 75)
+
+        assertEquals("79", applied.launch.env["GGML_HEXAGON_ARCH"])
+    }
+
+    @Test
+    fun htpArchIsNotSetForCpuOrUnknownDevice() {
+        assertEquals(null, LaunchTarget.apply(openclDoc(), Accelerator.CPU, htpArch = 75).launch.env["GGML_HEXAGON_ARCH"])
+        assertEquals(null, LaunchTarget.apply(openclDoc(), Accelerator.NPU, htpArch = null).launch.env["GGML_HEXAGON_ARCH"])
+        assertEquals(emptyMap<String, String>(), LaunchTarget.hexagonDefaults(0))
+    }
+
+    @Test
     fun npuHonoursProfileHexagonDevice() {
         val doc = hexagonDoc().copy(
             launch = hexagonDoc().launch.copy(

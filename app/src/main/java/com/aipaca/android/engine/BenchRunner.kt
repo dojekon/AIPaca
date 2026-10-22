@@ -2,6 +2,7 @@ package com.aipaca.android.engine
 
 import android.content.Context
 import com.aipaca.android.R
+import com.aipaca.android.data.device.DeviceInfo
 import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
@@ -56,7 +57,7 @@ class BenchRunner(context: Context) {
             val builder = ProcessBuilder(listOf(binary.absolutePath) + buildArgs(modelPath, backend, threads, cpuMask))
                 .directory(appContext.filesDir)
                 .redirectErrorStream(true)
-            configureEnvironment(builder.environment())
+            configureEnvironment(builder.environment(), backend)
             val started = try {
                 builder.start()
             } catch (e: IOException) {
@@ -117,7 +118,10 @@ class BenchRunner(context: Context) {
         add(if (backend == BenchBackend.CPU) "0" else "99")
     }
 
-    private fun configureEnvironment(environment: MutableMap<String, String>) {
+    private fun configureEnvironment(environment: MutableMap<String, String>, backend: BenchBackend) {
+        if (backend == BenchBackend.HEXAGON) {
+            environment.putAll(LaunchTarget.hexagonDefaults(DeviceInfo.current(appContext).htpVersion))
+        }
         val nativeLibraryDir = appContext.applicationInfo.nativeLibraryDir
         val stage = NpuSupport.stage(appContext)
         environment[LD_LIBRARY_PATH] = NpuSupport.libraryPathFor(nativeLibraryDir, stage.dir, stage.staged)
