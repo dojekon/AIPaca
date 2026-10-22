@@ -1,16 +1,8 @@
 package com.aipaca.android.engine.agent
 
-import java.io.File
 import java.time.LocalDate
 
 fun buildAgentSystemPrompt(
-    sandboxRoot: File,
-    tools: List<AgentTool>,
-    today: String = LocalDate.now().toString(),
-): String = buildAgentSystemPrompt(sandboxRoot.absolutePath, tools, today)
-
-fun buildAgentSystemPrompt(
-    workspaceRoot: String,
     tools: List<AgentTool>,
     today: String = LocalDate.now().toString(),
 ): String {
@@ -31,9 +23,8 @@ fun buildAgentSystemPrompt(
         )
         appendLine()
         appendLine("Environment:")
-        appendLine("- Workspace root: $workspaceRoot")
+        appendLine("- Workspace root: \".\". Use relative paths such as \"notes/todo.txt\"; use \".\" for the root.")
         appendLine("- File tool paths resolve inside the workspace; paths outside it are rejected.")
-        appendLine("- All relative paths are resolved against the workspace root.")
         appendLine("- Tools run immediately without user confirmation.")
         appendLine("- Today's date: $today")
         appendLine(

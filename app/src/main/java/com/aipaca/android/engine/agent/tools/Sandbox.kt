@@ -9,6 +9,9 @@ fun resolveInSandbox(root: File, path: String): Result<File> {
 
     if (path.isBlank()) return Result.success(rootCanonical)
 
+    val relative = relativeToRoot(root, rootCanonical, path)
+    if (relative != null) return resolveInSandbox(root, relative)
+
     if (path.startsWith("/") || path.startsWith("\\") || WINDOWS_ABSOLUTE.matches(path) || File(path).isAbsolute) {
         return Result.failure(IllegalArgumentException("Absolute paths are not allowed: $path"))
     }
@@ -32,3 +35,13 @@ fun resolveInSandbox(root: File, path: String): Result<File> {
 
 private fun hasTraversal(path: String): Boolean =
     path.split('/', '\\').any { it == ".." }
+
+private fun relativeToRoot(root: File, rootCanonical: File, path: String): String? {
+    if (!path.startsWith("/")) return null
+    val normalized = path.trimEnd('/')
+    for (prefix in listOf(root.absoluteFile.path, rootCanonical.path)) {
+        if (normalized == prefix) return "."
+        if (normalized.startsWith(prefix + "/")) return normalized.removePrefix(prefix + "/")
+    }
+    return null
+}

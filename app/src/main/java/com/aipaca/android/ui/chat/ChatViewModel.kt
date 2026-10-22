@@ -379,7 +379,7 @@ class ChatViewModel(
         sandbox.mkdirs()
         val tools = builtinTools(sandbox)
         val registry = AgentToolRegistry(tools)
-        val systemPrompt = buildAgentSystemPrompt(sandbox, tools)
+        val systemPrompt = buildAgentSystemPrompt(tools)
         val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
         val history = agentHistory(messageDao.getForChat(chatId))
         var contextSummary = history.summary

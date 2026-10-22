@@ -71,6 +71,42 @@ class SandboxTest {
     }
 
     @Test
+    fun absolutePathInsideSandboxIsAccepted() {
+        withTempDir { dir ->
+            val root = File(dir, "agent").apply { mkdirs() }
+            val result = resolveInSandbox(root, File(root, "notes/a.txt").absolutePath)
+            assertEquals(File(root, "notes/a.txt").canonicalFile, result.getOrThrow())
+        }
+    }
+
+    @Test
+    fun absoluteSandboxRootResolvesToRoot() {
+        withTempDir { dir ->
+            val root = File(dir, "agent").apply { mkdirs() }
+            assertEquals(root.canonicalFile, resolveInSandbox(root, root.absolutePath + "/").getOrThrow())
+            assertEquals(root.canonicalFile, resolveInSandbox(root, ".").getOrThrow())
+        }
+    }
+
+    @Test
+    fun absolutePathInsideSandboxStillRejectsTraversal() {
+        withTempDir { dir ->
+            val root = File(dir, "agent").apply { mkdirs() }
+            val result = resolveInSandbox(root, root.absolutePath + "/../secret")
+            assertTrue(result.isFailure)
+        }
+    }
+
+    @Test
+    fun siblingDirectoryWithSamePrefixIsRejected() {
+        withTempDir { dir ->
+            val root = File(dir, "agent").apply { mkdirs() }
+            val result = resolveInSandbox(root, File(dir, "agent2/x").absolutePath)
+            assertTrue(result.isFailure)
+        }
+    }
+
+    @Test
     fun windowsAbsolutePathRejected() {
         withTempDir { dir ->
             val root = File(dir, "agent").apply { mkdirs() }

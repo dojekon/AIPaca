@@ -19,7 +19,7 @@ class AgentSystemPromptTest {
             FakeTool("write", "Write text to a sandbox file."),
         )
 
-        val prompt = buildAgentSystemPrompt(sandboxRoot, tools, today)
+        val prompt = buildAgentSystemPrompt(tools, today)
         val block = availableToolsBlock(prompt)
 
         tools.forEach { tool ->
@@ -37,8 +37,8 @@ class AgentSystemPromptTest {
             FakeTool("mike", "Middle tool."),
         )
 
-        val forward = buildAgentSystemPrompt(sandboxRoot, tools, today)
-        val reversed = buildAgentSystemPrompt(sandboxRoot, tools.reversed(), today)
+        val forward = buildAgentSystemPrompt(tools, today)
+        val reversed = buildAgentSystemPrompt(tools.reversed(), today)
 
         assertEquals(forward, reversed)
         val block = availableToolsBlock(forward)
@@ -57,16 +57,17 @@ class AgentSystemPromptTest {
             )
         }
 
-        val prompt = buildAgentSystemPrompt(sandboxRoot, tools, today)
+        val prompt = buildAgentSystemPrompt(tools, today)
 
         assertTrue("prompt length was ${prompt.length}", prompt.length < 4000)
     }
 
     @Test
-    fun containsSandboxPathAndToday() {
-        val prompt = buildAgentSystemPrompt(sandboxRoot, listOf(FakeTool("read", "Read.")), today)
+    fun usesRelativeWorkspaceRootAndToday() {
+        val prompt = buildAgentSystemPrompt(listOf(FakeTool("read", "Read.")), today)
 
-        assertTrue(prompt.contains(sandboxRoot.absolutePath))
+        assertFalse(prompt.contains(sandboxRoot.absolutePath))
+        assertTrue(prompt.contains("Workspace root: \".\""))
         assertTrue(prompt.contains(today))
     }
 
@@ -75,7 +76,7 @@ class AgentSystemPromptTest {
         val schema = """{"type":"object","properties":{"path":{"type":"string"}}}"""
         val tools = listOf(FakeTool("read", "Read.", schema))
 
-        val prompt = buildAgentSystemPrompt(sandboxRoot, tools, today)
+        val prompt = buildAgentSystemPrompt(tools, today)
 
         assertFalse(prompt.contains("\"type\": \"object\""))
         assertFalse(prompt.contains("\"type\":\"object\""))
@@ -85,14 +86,14 @@ class AgentSystemPromptTest {
 
     @Test
     fun statesToolsRunWithoutConfirmation() {
-        val prompt = buildAgentSystemPrompt(sandboxRoot, listOf(FakeTool("read", "Read.")), today)
+        val prompt = buildAgentSystemPrompt(listOf(FakeTool("read", "Read.")), today)
 
         assertTrue(prompt.contains("without user confirmation"))
     }
 
     @Test
     fun handlesEmptyToolList() {
-        val prompt = buildAgentSystemPrompt(sandboxRoot, emptyList(), today)
+        val prompt = buildAgentSystemPrompt(emptyList(), today)
         val block = availableToolsBlock(prompt)
 
         assertTrue(block.contains("No tools are available"))
