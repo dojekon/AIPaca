@@ -4,6 +4,7 @@ import com.aipaca.android.engine.agent.tools.AgentToolRegistry
 import com.aipaca.android.engine.chat.ApiMessage
 import com.aipaca.android.engine.chat.ChatEvent
 import com.aipaca.android.engine.chat.ChatRequest
+import com.aipaca.android.engine.chat.ChatStreamResult
 import com.aipaca.android.engine.chat.ChatStreamer
 import com.aipaca.android.engine.chat.ChatTimings
 import kotlinx.coroutines.CancellationException
@@ -54,9 +55,11 @@ class AgentLoop(
         config: AgentLoopConfig = AgentLoopConfig(),
         contextPreparer: suspend (List<ApiMessage>) -> List<ApiMessage> = { it },
         contextSummary: () -> String? = { null },
+        onContextOverflow: suspend (ContextOverflow) -> Boolean = { false },
         callbacks: AgentLoopCallbacks,
     ): AgentLoopOutcome {
         val working = history.toMutableList()
+        val executedSignatures = mutableListOf<String>()
         suspend fun recordSynthetic(call: AgentToolCall, result: ToolResult) {
             callbacks.onToolFinished(call, result)
             working += toolApiMessage(call, result)
@@ -64,33 +67,44 @@ class AgentLoop(
         var iteration = 0
         while (stepsGuarded(iteration, config.maxIterations)) {
             callbacks.onStep(iteration + 1, config.maxIterations)
-            callbacks.onAssistantStart()
-            val prepared = contextPreparer(working.toList())
-            working.clear()
-            working.addAll(prepared)
-            val request = ChatRequest(
-                messages = prepared,
-                systemPrompt = withContextSummary(systemPrompt, contextSummary()),
-                temperature = config.temperature,
-                topP = config.topP,
-                topK = config.topK,
-                minP = config.minP,
-                repeatPenalty = config.repeatPenalty,
-                tools = registry.manifest,
-                toolChoice = "auto",
-                reasoningBudget = config.reasoningBudget,
-                reasoningBudgetMessage = config.reasoningBudgetMessage,
-            )
-            val result = streamer.stream(
-                serverUrl,
-                apiKey,
-                request,
-                callbacks::onToolCallDelta,
-            ) { text, reasoning ->
-                callbacks.onTextDelta(text, reasoning)
-            }.getOrElse { error ->
-                return AgentLoopOutcome.Failed(error.message ?: "Agent request failed")
+            var overflowRetries = 0
+            var streamed: ChatStreamResult? = null
+            while (streamed == null) {
+                callbacks.onAssistantStart()
+                val prepared = contextPreparer(working.toList())
+                working.clear()
+                working.addAll(prepared)
+                val request = ChatRequest(
+                    messages = prepared,
+                    systemPrompt = withContextSummary(systemPrompt, contextSummary()),
+                    temperature = config.temperature,
+                    topP = config.topP,
+                    topK = config.topK,
+                    minP = config.minP,
+                    repeatPenalty = config.repeatPenalty,
+                    tools = registry.manifest,
+                    toolChoice = "auto",
+                    reasoningBudget = config.reasoningBudget,
+                    reasoningBudgetMessage = config.reasoningBudgetMessage,
+                )
+                streamed = streamer.stream(
+                    serverUrl,
+                    apiKey,
+                    request,
+                    callbacks::onToolCallDelta,
+                ) { text, reasoning ->
+                    callbacks.onTextDelta(text, reasoning)
+                }.getOrElse { error ->
+                    val overflow = parseContextOverflow(error.message)
+                    val retry = overflow != null &&
+                        overflowRetries < MAX_CONTEXT_OVERFLOW_RETRIES &&
+                        onContextOverflow(overflow)
+                    if (!retry) return AgentLoopOutcome.Failed(error.message ?: "Agent request failed")
+                    overflowRetries++
+                    null
+                }
             }
+            val result = streamed
             val calls = result.toolCalls.map { call ->
                 AgentToolCall(
                     id = call.id ?: "call_${call.index}",
@@ -115,9 +129,15 @@ class AgentLoop(
             try {
                 for (call in calls) {
                     callbacks.onToolStarted(call)
-                    val toolResult = withContext(Dispatchers.IO) {
-                        registry.execute(call.name, call.argsJson)
+                    val signature = toolCallSignature(call)
+                    val toolResult = if (isRepeatedCall(executedSignatures, signature)) {
+                        ToolResult(AgentToolStatus.ERROR, REPEATED_CALL_MESSAGE)
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            registry.execute(call.name, call.argsJson)
+                        }
                     }
+                    executedSignatures += signature
                     callbacks.onToolFinished(call, toolResult)
                     working += toolApiMessage(call, toolResult)
                     completed++

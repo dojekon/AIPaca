@@ -72,4 +72,48 @@ class AgentReducersTest {
         assertEquals("hello", payload.output)
         assertEquals("v", payload.meta["k"])
     }
+
+    @Test
+    fun signatureIgnoresArgumentWhitespace() {
+        val compact = AgentToolCall("a", "read", """{"path":"x.txt"}""")
+        val spaced = AgentToolCall("b", "read", """{ "path" : "x.txt" }""")
+
+        assertEquals(toolCallSignature(compact), toolCallSignature(spaced))
+    }
+
+    @Test
+    fun signatureFallsBackToRawArgsWhenMalformed() {
+        assertEquals("read:{oops", toolCallSignature(AgentToolCall("a", "read", " {oops ")))
+    }
+
+    @Test
+    fun repeatedCallDetectedAfterLimitMinusOneIdenticalCalls() {
+        assertFalse(isRepeatedCall(emptyList(), "s"))
+        assertFalse(isRepeatedCall(listOf("s"), "s"))
+        assertTrue(isRepeatedCall(listOf("s", "s"), "s"))
+        assertFalse(isRepeatedCall(listOf("s", "t"), "s"))
+        assertTrue(isRepeatedCall(listOf("t", "s", "s"), "s"))
+    }
+
+    @Test
+    fun contextOverflowParsedFromServerMessage() {
+        val message = "HTTP 400: {\"error\":{\"code\":400,\"message\":\"request (5000 tokens) exceeds the " +
+            "available context size (4096 tokens), try increasing it\",\"type\":\"exceed_context_size_error\"}}"
+
+        assertEquals(ContextOverflow(5000, 4096), parseContextOverflow(message))
+    }
+
+    @Test
+    fun contextOverflowTypeWithoutNumbers() {
+        assertEquals(ContextOverflow(null, null), parseContextOverflow("type exceed_context_size_error"))
+        assertNull(parseContextOverflow("HTTP 500: boom"))
+        assertNull(parseContextOverflow(null))
+    }
+
+    @Test
+    fun budgetScaleShrinksByOverflowRatio() {
+        assertEquals(0.85 * 4096 / 5000, shrunkBudgetScale(1.0, ContextOverflow(5000, 4096)), 1e-9)
+        assertEquals(0.7 * 0.85, shrunkBudgetScale(1.0, ContextOverflow(null, null)), 1e-9)
+        assertEquals(0.1, shrunkBudgetScale(0.1, ContextOverflow(null, null)), 1e-9)
+    }
 }

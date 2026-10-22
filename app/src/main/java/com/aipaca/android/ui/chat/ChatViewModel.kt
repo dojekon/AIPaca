@@ -27,6 +27,7 @@ import com.aipaca.android.engine.agent.ToolResult
 import com.aipaca.android.engine.agent.buildAgentSystemPrompt
 import com.aipaca.android.engine.agent.buildCompactionRequest
 import com.aipaca.android.engine.agent.contextBudget
+import com.aipaca.android.engine.agent.shrunkBudgetScale
 import com.aipaca.android.engine.agent.MIN_CONTEXT_BUDGET
 import com.aipaca.android.engine.agent.estimateTokens
 import com.aipaca.android.engine.agent.splitForCompaction
@@ -124,7 +125,12 @@ class ChatViewModel(
         if (chatId != 0L) {
             viewModelScope.launch {
                 chatDao.observeById(chatId).collect { chat ->
-                    if (chat != null) _mode.value = chat.mode
+                    if (chat != null && chat.mode != _mode.value) {
+                        if (_params.value == defaultChatParams(_mode.value)) {
+                            _params.value = defaultChatParams(chat.mode)
+                        }
+                        _mode.value = chat.mode
+                    }
                 }
             }
         }
@@ -175,7 +181,7 @@ class ChatViewModel(
     private val _lastTimings = MutableStateFlow<ChatTimings?>(null)
     val lastTimings: StateFlow<ChatTimings?> = _lastTimings.asStateFlow()
 
-    private val _params = MutableStateFlow(ChatParamsUi())
+    private val _params = MutableStateFlow(defaultChatParams(initialMode))
     val params: StateFlow<ChatParamsUi> = _params.asStateFlow()
 
     private val _systemPrompt = MutableStateFlow("")
@@ -341,7 +347,7 @@ class ChatViewModel(
     }
 
     fun resetParams() {
-        _params.value = ChatParamsUi()
+        _params.value = defaultChatParams(_mode.value)
     }
 
     private fun readyServerUrl(): String? {
@@ -383,8 +389,10 @@ class ChatViewModel(
             it.parametersJsonSchema.length + it.description.length + it.name.length
         }
         val budget = contextBudget(engineManager.contextSize ?: AGENT_FALLBACK_CONTEXT, toolsChars)
+        var budgetScale = 1.0
         fun messagesBudget(): Int =
-            (budget - estimateTokens(contextSummary.orEmpty())).coerceAtLeast(MIN_CONTEXT_BUDGET)
+            ((budget * budgetScale).toInt() - estimateTokens(contextSummary.orEmpty()))
+                .coerceAtLeast(MIN_CONTEXT_BUDGET)
         val contextPreparer: suspend (List<ApiMessage>) -> List<ApiMessage> = preparer@ { messages ->
             val trimmed = trimHistory(messages, messagesBudget())
             if (trimmed.estimatedTokens <= messagesBudget() ||
@@ -522,6 +530,11 @@ class ChatViewModel(
                 ),
                 contextPreparer = contextPreparer,
                 contextSummary = { contextSummary },
+                onContextOverflow = { overflow ->
+                    budgetScale = shrunkBudgetScale(budgetScale, overflow)
+                    Log.i(TAG, "Context overflow $overflow; budget scale -> $budgetScale")
+                    true
+                },
                 callbacks = callbacks,
             )
             when (outcome) {

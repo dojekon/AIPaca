@@ -318,6 +318,84 @@ class AgentLoopTest {
     }
 
     @Test
+    fun identicalCallIsNotExecutedThirdTimeInARow() = runBlocking {
+        var executions = 0
+        val echo = TestTool("echo") {
+            executions++
+            ToolResult(AgentToolStatus.OK, "ok")
+        }
+        val call = AssembledToolCall(0, "c", "echo", """{"x":1}""")
+        val streamer = ScriptedStreamer(
+            listOf(reply("", listOf(call)), reply("", listOf(call)), reply("", listOf(call)), reply("done")),
+        )
+        val callbacks = LoopRecordingCallbacks()
+
+        val outcome = AgentLoop(streamer, AgentToolRegistry(listOf(echo))).run(
+            SERVER_URL,
+            null,
+            SYSTEM_PROMPT,
+            listOf(ApiMessage(role = "user", content = "q")),
+            callbacks = callbacks,
+        )
+
+        assertEquals(AgentLoopOutcome.Completed(4), outcome)
+        assertEquals(2, executions)
+        val lastToolMessage = streamer.requests[3].messages.last { it.role == "tool" }
+        assertTrue(lastToolMessage.content.contains("not executed"))
+    }
+
+    @Test
+    fun contextOverflowRetriesWithPreparedContext() = runBlocking {
+        val overflow: ScriptedReply = { _, _, _ ->
+            Result.failure(java.io.IOException("HTTP 400: request (5000 tokens) exceeds the available context size (4096 tokens)"))
+        }
+        val streamer = ScriptedStreamer(listOf(overflow, reply("answer")))
+        var overflows = 0
+        var preparations = 0
+
+        val outcome = AgentLoop(streamer, AgentToolRegistry(emptyList())).run(
+            SERVER_URL,
+            null,
+            SYSTEM_PROMPT,
+            listOf(ApiMessage(role = "user", content = "q")),
+            contextPreparer = { messages ->
+                preparations++
+                messages
+            },
+            onContextOverflow = { info ->
+                assertEquals(ContextOverflow(5000, 4096), info)
+                overflows++
+                true
+            },
+            callbacks = LoopRecordingCallbacks(),
+        )
+
+        assertEquals(AgentLoopOutcome.Completed(1), outcome)
+        assertEquals(1, overflows)
+        assertEquals(2, preparations)
+    }
+
+    @Test
+    fun contextOverflowGivesUpAfterRetryLimit() = runBlocking {
+        val overflow: ScriptedReply = { _, _, _ ->
+            Result.failure(java.io.IOException("exceed_context_size_error"))
+        }
+        val streamer = ScriptedStreamer(List(MAX_CONTEXT_OVERFLOW_RETRIES + 1) { overflow })
+
+        val outcome = AgentLoop(streamer, AgentToolRegistry(emptyList())).run(
+            SERVER_URL,
+            null,
+            SYSTEM_PROMPT,
+            listOf(ApiMessage(role = "user", content = "q")),
+            onContextOverflow = { true },
+            callbacks = LoopRecordingCallbacks(),
+        )
+
+        assertTrue(outcome is AgentLoopOutcome.Failed)
+        assertEquals(MAX_CONTEXT_OVERFLOW_RETRIES + 1, streamer.requests.size)
+    }
+
+    @Test
     fun callbacksOrder() = runBlocking {
         val echo = TestTool("echo") { ToolResult(AgentToolStatus.OK, "ok") }
         val call = AssembledToolCall(0, "c1", "echo", "{}")
