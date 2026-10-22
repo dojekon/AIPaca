@@ -15,7 +15,8 @@ private const val COMPACTION_HEAD_PERCENT = 40
 
 const val COMPACTION_SYSTEM_PROMPT =
     "You compact an ongoing agent conversation so it can continue within a limited context window. " +
-        "Read the transcript and produce a compact summary in English. Preserve: the user's goal and " +
+        "Read the transcript and produce a compact summary in English. If the transcript starts with an " +
+        "earlier summary, merge it into the new one. Preserve: the user's goal and " +
         "intent; constraints, preferences, and requirements; decisions and their reasons; files created " +
         "or modified with their paths and relevant contents; important tool outputs, command results, " +
         "and URLs; and unresolved next steps. Keep exact names, identifiers, paths, and URLs. Omit " +
@@ -104,3 +105,24 @@ private fun safeTailStart(text: String, index: Int): Int {
     }
     return start
 }
+
+data class CompactionSplit(val older: List<ApiMessage>, val activeTurn: List<ApiMessage>)
+
+fun splitForCompaction(messages: List<ApiMessage>): CompactionSplit {
+    val turnStart = messages.indexOfLast { it.role == "user" }
+    if (turnStart <= 0) return CompactionSplit(older = emptyList(), activeTurn = messages)
+    return CompactionSplit(older = messages.take(turnStart), activeTurn = messages.drop(turnStart))
+}
+
+fun compactionInput(summary: String?, messages: List<ApiMessage>): List<ApiMessage> =
+    if (summary.isNullOrBlank()) messages else listOf(ApiMessage(role = "system", content = summary)) + messages
+
+fun withContextSummary(systemPrompt: String, summary: String?): String =
+    if (summary.isNullOrBlank()) {
+        systemPrompt
+    } else {
+        "$systemPrompt\n\n$CONTEXT_SUMMARY_HEADER\n$summary"
+    }
+
+const val CONTEXT_SUMMARY_HEADER =
+    "Summary of the earlier conversation (older messages were compacted to save context):"

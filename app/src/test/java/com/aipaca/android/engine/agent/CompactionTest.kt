@@ -212,6 +212,50 @@ class CompactionTest {
         assertFalse(sanitized.startsWith("Summary:"))
     }
 
+    @Test
+    fun splitKeepsActiveTurnFromLastUserMessage() {
+        val messages = listOf(
+            user("first"),
+            assistant("reply"),
+            user("current"),
+            assistant("", listOf(ApiToolCall("c1", "read", "{}"))),
+            tool("c1", "file"),
+        )
+
+        val split = splitForCompaction(messages)
+
+        assertEquals(messages.take(2), split.older)
+        assertEquals(messages.drop(2), split.activeTurn)
+    }
+
+    @Test
+    fun splitWithSingleTurnHasNothingToCompact() {
+        val messages = listOf(user("only"), assistant("", listOf(ApiToolCall("c1", "read", "{}"))), tool("c1", "x"))
+
+        val split = splitForCompaction(messages)
+
+        assertTrue(split.older.isEmpty())
+        assertEquals(messages, split.activeTurn)
+    }
+
+    @Test
+    fun compactionInputPrependsPreviousSummary() {
+        val messages = listOf(user("q"))
+
+        assertEquals(messages, compactionInput(null, messages))
+        assertEquals(
+            listOf(ApiMessage(role = "system", content = "earlier")) + messages,
+            compactionInput("earlier", messages),
+        )
+    }
+
+    @Test
+    fun summaryIsAppendedToSystemPrompt() {
+        assertEquals("base", withContextSummary("base", null))
+        assertEquals("base", withContextSummary("base", "  "))
+        assertEquals("base\n\n$CONTEXT_SUMMARY_HEADER\nnotes", withContextSummary("base", "notes"))
+    }
+
     private fun user(content: String) = ApiMessage(role = "user", content = content)
 
     private fun assistant(content: String, toolCalls: List<ApiToolCall>? = null) =

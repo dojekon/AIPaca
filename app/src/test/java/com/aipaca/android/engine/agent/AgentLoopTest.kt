@@ -293,6 +293,31 @@ class AgentLoopTest {
     }
 
     @Test
+    fun contextSummaryIsReadEachIterationIntoSystemPrompt() = runBlocking {
+        val echo = TestTool("echo") { ToolResult(AgentToolStatus.OK, "ok") }
+        val call = AssembledToolCall(0, "c1", "echo", "{}")
+        val streamer = ScriptedStreamer(listOf(reply("", listOf(call)), reply("answer")))
+        val loop = AgentLoop(streamer, AgentToolRegistry(listOf(echo)))
+        var summary: String? = null
+
+        loop.run(
+            SERVER_URL,
+            null,
+            SYSTEM_PROMPT,
+            listOf(ApiMessage(role = "user", content = "q")),
+            contextPreparer = { messages ->
+                if (messages.size > 1) summary = "compacted"
+                messages
+            },
+            contextSummary = { summary },
+            callbacks = LoopRecordingCallbacks(),
+        )
+
+        assertEquals(SYSTEM_PROMPT, streamer.requests[0].systemPrompt)
+        assertEquals(withContextSummary(SYSTEM_PROMPT, "compacted"), streamer.requests[1].systemPrompt)
+    }
+
+    @Test
     fun callbacksOrder() = runBlocking {
         val echo = TestTool("echo") { ToolResult(AgentToolStatus.OK, "ok") }
         val call = AssembledToolCall(0, "c1", "echo", "{}")

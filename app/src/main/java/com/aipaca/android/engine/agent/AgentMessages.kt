@@ -32,3 +32,14 @@ fun toApiMessages(messages: List<MessageEntity>): List<ApiMessage> =
             else -> ApiMessage(role = message.role, content = message.content)
         }
     }
+
+data class AgentHistory(val summary: String?, val messages: List<MessageEntity>)
+
+fun agentHistory(messages: List<MessageEntity>): AgentHistory {
+    val lastSummary = messages.indexOfLast { it.role == "system" }
+    if (lastSummary < 0) return AgentHistory(summary = null, messages = messages)
+    return AgentHistory(
+        summary = messages[lastSummary].content.ifBlank { null },
+        messages = messages.drop(lastSummary + 1),
+    )
+}

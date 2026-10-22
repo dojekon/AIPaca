@@ -53,6 +53,7 @@ class AgentLoop(
         history: List<ApiMessage>,
         config: AgentLoopConfig = AgentLoopConfig(),
         contextPreparer: suspend (List<ApiMessage>) -> List<ApiMessage> = { it },
+        contextSummary: () -> String? = { null },
         callbacks: AgentLoopCallbacks,
     ): AgentLoopOutcome {
         val working = history.toMutableList()
@@ -69,7 +70,7 @@ class AgentLoop(
             working.addAll(prepared)
             val request = ChatRequest(
                 messages = prepared,
-                systemPrompt = systemPrompt,
+                systemPrompt = withContextSummary(systemPrompt, contextSummary()),
                 temperature = config.temperature,
                 topP = config.topP,
                 topK = config.topK,

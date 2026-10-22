@@ -27,6 +27,11 @@ import com.aipaca.android.engine.agent.ToolResult
 import com.aipaca.android.engine.agent.buildAgentSystemPrompt
 import com.aipaca.android.engine.agent.buildCompactionRequest
 import com.aipaca.android.engine.agent.contextBudget
+import com.aipaca.android.engine.agent.MIN_CONTEXT_BUDGET
+import com.aipaca.android.engine.agent.estimateTokens
+import com.aipaca.android.engine.agent.splitForCompaction
+import com.aipaca.android.engine.agent.compactionInput
+import com.aipaca.android.engine.agent.agentHistory
 import com.aipaca.android.engine.agent.decodeToolCalls
 import com.aipaca.android.engine.agent.encodeToolCalls
 import com.aipaca.android.engine.agent.encodeToolResult
@@ -205,15 +210,16 @@ class ChatViewModel(
         val serverUrl = readyServerUrl() ?: return false
         streamJob = viewModelScope.launch {
             val chat = ensureChat(content)
+            val sentAt = System.currentTimeMillis()
             messageDao.insert(
                 MessageEntity(
                     chatId = chat,
                     role = ROLE_USER,
                     content = content,
-                    createdAt = System.currentTimeMillis(),
+                    createdAt = sentAt,
                 ),
             )
-            if (_mode.value == ChatMode.AGENT) runAgent(chat, serverUrl) else stream(chat, serverUrl)
+            if (_mode.value == ChatMode.AGENT) runAgent(chat, serverUrl, sentAt) else stream(chat, serverUrl)
         }
         return true
     }
@@ -272,10 +278,14 @@ class ChatViewModel(
         compactJob = viewModelScope.launch {
             _compacting.value = true
             try {
-                val history = messageDao.getForChat(chatId)
-                if (history.size < COMPACTION_MIN_MESSAGES) return@launch
+                val history = agentHistory(messageDao.getForChat(chatId))
+                if (history.messages.size < COMPACTION_MIN_MESSAGES) return@launch
                 val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
-                val summary = summarize(serverUrl, apiKey, toApiMessages(history))
+                val summary = summarize(
+                    serverUrl,
+                    apiKey,
+                    compactionInput(history.summary, toApiMessages(history.messages)),
+                )
                 if (summary == null) {
                     _errors.trySend(application.getString(R.string.agent_error_compaction))
                     return@launch
@@ -290,7 +300,7 @@ class ChatViewModel(
                     ),
                 )
                 chatDao.updateTimestamp(chatId, now)
-                Log.i(TAG, "Context compacted manually: ${history.size} messages -> summary")
+                Log.i(TAG, "Context compacted manually: ${history.messages.size} messages -> summary")
             } finally {
                 _compacting.value = false
             }
@@ -358,45 +368,51 @@ class ChatViewModel(
         return id
     }
 
-    private suspend fun runAgent(chatId: Long, serverUrl: String) {
+    private suspend fun runAgent(chatId: Long, serverUrl: String, turnStartedAt: Long) {
         val sandbox = agentSandboxRoot(application.filesDir)
         sandbox.mkdirs()
         val tools = builtinTools(sandbox)
         val registry = AgentToolRegistry(tools)
         val systemPrompt = buildAgentSystemPrompt(sandbox, tools)
         val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
-        val apiMessages = toApiMessages(messageDao.getForChat(chatId))
+        val history = agentHistory(messageDao.getForChat(chatId))
+        var contextSummary = history.summary
+        val apiMessages = toApiMessages(history.messages)
 
         val toolsChars = registry.manifest.sumOf {
             it.parametersJsonSchema.length + it.description.length + it.name.length
         }
         val budget = contextBudget(engineManager.contextSize ?: AGENT_FALLBACK_CONTEXT, toolsChars)
+        fun messagesBudget(): Int =
+            (budget - estimateTokens(contextSummary.orEmpty())).coerceAtLeast(MIN_CONTEXT_BUDGET)
         val contextPreparer: suspend (List<ApiMessage>) -> List<ApiMessage> = preparer@ { messages ->
-            val trimmed = trimHistory(messages, budget)
-            if (trimmed.estimatedTokens <= budget ||
-                !shouldCompact(trimmed.estimatedTokens, budget, trimmed.messages.size)
+            val trimmed = trimHistory(messages, messagesBudget())
+            if (trimmed.estimatedTokens <= messagesBudget() ||
+                !shouldCompact(trimmed.estimatedTokens, messagesBudget(), trimmed.messages.size)
             ) {
                 return@preparer trimmed.messages
             }
+            val split = splitForCompaction(messages)
+            if (split.older.isEmpty()) return@preparer trimmed.messages
             _compacting.value = true
             try {
-                val summary = summarize(serverUrl, apiKey, trimmed.messages)
+                val summary = summarize(serverUrl, apiKey, compactionInput(contextSummary, split.older))
                 if (summary == null) {
                     Log.i(TAG, "Context compaction failed; using trimmed history")
                     return@preparer trimmed.messages
                 }
-                val now = System.currentTimeMillis()
                 messageDao.insert(
                     MessageEntity(
                         chatId = chatId,
                         role = ROLE_SYSTEM,
                         content = summary,
-                        createdAt = now,
+                        createdAt = turnStartedAt - 1,
                     ),
                 )
-                chatDao.updateTimestamp(chatId, now)
-                Log.i(TAG, "Context compacted: ${trimmed.messages.size} messages -> summary")
-                listOf(ApiMessage(role = ROLE_SYSTEM, content = summary))
+                chatDao.updateTimestamp(chatId, System.currentTimeMillis())
+                contextSummary = summary
+                Log.i(TAG, "Context compacted: ${split.older.size} messages -> summary")
+                trimHistory(split.activeTurn, messagesBudget()).messages
             } finally {
                 _compacting.value = false
             }
@@ -505,6 +521,7 @@ class ChatViewModel(
                     },
                 ),
                 contextPreparer = contextPreparer,
+                contextSummary = { contextSummary },
                 callbacks = callbacks,
             )
             when (outcome) {

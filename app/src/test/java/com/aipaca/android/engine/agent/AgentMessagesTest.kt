@@ -137,4 +137,39 @@ class AgentMessagesTest {
         assertEquals("привет 😀 α", result[0].content)
         assertEquals("ответ \n\"quoted\"", result[1].content)
     }
+
+    @Test
+    fun historyWithoutSummaryIsKeptWhole() {
+        val input = listOf(message(1, "user", "a"), message(2, "assistant", "b"))
+
+        val history = agentHistory(input)
+
+        assertNull(history.summary)
+        assertEquals(input, history.messages)
+    }
+
+    @Test
+    fun historyStartsAfterLastSummary() {
+        val input = listOf(
+            message(1, "user", "old"),
+            message(2, "system", "first summary"),
+            message(3, "user", "middle"),
+            message(4, "system", "second summary"),
+            message(5, "user", "new"),
+            message(6, "assistant", "answer"),
+        )
+
+        val history = agentHistory(input)
+
+        assertEquals("second summary", history.summary)
+        assertEquals(listOf(5L, 6L), history.messages.map { it.id })
+    }
+
+    @Test
+    fun blankSummaryIsTreatedAsMissing() {
+        val history = agentHistory(listOf(message(1, "system", " "), message(2, "user", "q")))
+
+        assertNull(history.summary)
+        assertEquals(listOf(2L), history.messages.map { it.id })
+    }
 }
