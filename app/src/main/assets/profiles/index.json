@@ -29,7 +29,7 @@
       "id": "qwen3-4b/q4_0/sm8650-12gb-npu",
       "family": "qwen3-4b",
       "device": "qcom-sm8650/12gb",
-      "quants": ["Q4_0"],
+      "quants": ["Q4_0", "Q4_K_M", "Q4_K_S", "Q5_K_M", "Q6_K", "Q8_0"],
       "file": "profiles/qwen3-4b-q4_0-sm8650-npu.json"
     },
     {
@@ -64,7 +64,7 @@
       "id": "gemma-4-e2b/q4_0/sm8650-12gb-npu",
       "family": "gemma-4-e2b",
       "device": "qcom-sm8650/12gb",
-      "quants": ["Q4_0"],
+      "quants": ["Q4_0", "Q4_K_M", "Q4_K_S", "Q5_K_M", "Q6_K", "Q8_0"],
       "file": "profiles/gemma-4-e2b-q4_0-sm8650-npu.json"
     },
     {

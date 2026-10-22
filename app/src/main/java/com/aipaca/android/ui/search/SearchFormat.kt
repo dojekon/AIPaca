@@ -9,7 +9,13 @@ private const val MB = KB * 1024L
 private const val GB = MB * 1024L
 private const val THOUSAND = 1_000L
 private const val MILLION = 1_000_000L
-private const val NPU_QUANT_PREFIX = "Q4_0"
+private val NPU_QUANTS = setOf(
+    "Q4_0", "Q4_1", "Q8_0",
+    "Q4_K", "Q4_K_S", "Q4_K_M",
+    "Q5_K", "Q5_K_S", "Q5_K_M",
+    "Q6_K", "IQ4_NL",
+)
+private const val NPU_MXFP4_MARKER = "mxfp4"
 
 fun formatBytes(bytes: Long): String {
     val value = bytes.coerceAtLeast(0L)
@@ -36,7 +42,10 @@ fun formatCount(count: Long): String {
 }
 
 fun npuReady(files: List<HfGgufFile>): Boolean =
-    files.any { quantFromFileName(it.fileName)?.startsWith(NPU_QUANT_PREFIX) == true }
+    files.any { npuSupportsFile(it.fileName) }
+
+fun npuSupportsFile(fileName: String): Boolean =
+    quantFromFileName(fileName) in NPU_QUANTS || fileName.contains(NPU_MXFP4_MARKER, ignoreCase = true)
 
 private fun unit(value: Double, suffix: String): String = "${unitNoSpace(value)} $suffix"
 

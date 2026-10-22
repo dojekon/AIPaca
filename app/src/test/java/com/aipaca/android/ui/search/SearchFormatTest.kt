@@ -76,14 +76,24 @@ class SearchFormatTest {
     @Test
     fun npuReadyTrueForQ4ZeroFile() {
         assertTrue(npuReady(listOf(file("gemma-3-1b-Q4_0.gguf"))))
-        assertTrue(npuReady(listOf(file("model-Q8_0.gguf"), file("gemma-3-1b-Q4_0_4_4.gguf"))))
+        assertTrue(npuReady(listOf(file("model-Q8_0.gguf"))))
     }
 
     @Test
-    fun npuReadyFalseWithoutQ4ZeroFile() {
-        assertFalse(npuReady(listOf(file("model-Q4_K_M.gguf"), file("model-Q8_0.gguf"))))
+    fun npuReadyFalseForUnsupportedQuants() {
         assertFalse(npuReady(listOf(file("model-IQ4_XS.gguf"))))
         assertFalse(npuReady(listOf(file("model-bf16.gguf"))))
+        assertFalse(npuReady(listOf(file("model-Q3_K_M.gguf"), file("model-Q5_0.gguf"))))
+        assertFalse(npuReady(listOf(file("gemma-3-1b-Q4_0_4_4.gguf"))))
+    }
+
+    @Test
+    fun npuReadyForKQuantsAndMxfp4() {
+        assertTrue(npuReady(listOf(file("model-Q4_K_M.gguf"))))
+        assertTrue(npuReady(listOf(file("model-Q5_K_S.gguf"))))
+        assertTrue(npuReady(listOf(file("model-Q6_K.gguf"))))
+        assertTrue(npuReady(listOf(file("model-IQ4_NL.gguf"))))
+        assertTrue(npuReady(listOf(file("gpt-oss-20b-MXFP4.gguf"))))
     }
 
     private fun file(name: String): HfGgufFile =
