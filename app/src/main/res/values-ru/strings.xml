@@ -241,4 +241,6 @@
     <string name="agent_compact">Сжать контекст</string>
     <string name="agent_compacting">Сжатие…</string>
     <string name="agent_compaction_divider">Контекст сжат</string>
+    <string name="settings_bench_entry">Скорость обработки промпта и генерации на CPU и NPU</string>
+    <string name="settings_server_entry">Порт, API-ключ и доступ из локальной сети для OpenAI-совместимого сервера</string>
 </resources>

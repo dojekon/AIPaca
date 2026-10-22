@@ -3,6 +3,12 @@ package com.aipaca.android.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,7 +71,12 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(settingsRepository: SettingsRepository, modifier: Modifier = Modifier) {
+fun SettingsScreen(
+    settingsRepository: SettingsRepository,
+    modifier: Modifier = Modifier,
+    onOpenBench: () -> Unit = {},
+    onOpenServer: () -> Unit = {},
+) {
     val settings by settingsRepository.settings.collectAsStateWithLifecycle(initialValue = Settings())
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
@@ -119,7 +130,18 @@ fun SettingsScreen(settingsRepository: SettingsRepository, modifier: Modifier = 
                 text = stringResource(R.string.screen_settings_title),
                 style = MaterialTheme.typography.headlineSmall,
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
+            SettingsEntry(
+                title = stringResource(R.string.menu_bench),
+                description = stringResource(R.string.settings_bench_entry),
+                onClick = onOpenBench,
+            )
+            SettingsEntry(
+                title = stringResource(R.string.menu_server),
+                description = stringResource(R.string.settings_server_entry),
+                onClick = onOpenServer,
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             Text(
                 text = stringResource(R.string.settings_language),
                 style = MaterialTheme.typography.titleMedium,
@@ -405,3 +427,20 @@ private fun LanguageOption(
 
 private const val MODELS_DIR = "models"
 private const val CLIP_LABEL = "aipaca"
+
+@Composable
+private fun SettingsEntry(title: String, description: String, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(description) },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick),
+    )
+}

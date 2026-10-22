@@ -11,8 +11,10 @@ com.aipaca.android
 ├─ AiPacaApp / AppContainer      ручной DI: Room, DataStore, EngineManager,
 │                                ProfileRepository, DownloadManager
 ├─ MainActivity / ui/AppRoot     ModalNavigationDrawer + NavHost
-│   (Модели (+ поиск HF) · Сервер API · Бенчмарк · Настройки · О приложении
-│    + история чатов; загрузки — dropdown в топбаре «Моделей»)
+│   (Модели (+ поиск HF) · Настройки (+ Бенчмарк, Сервер API)
+│    + история чатов; «О приложении» — тап по названию в шапке drawer;
+│    подэкраны — Destinations.subPages со стрелкой «назад»;
+│    загрузки — dropdown в топбаре «Моделей»)
 │
 ├─ data/db                       Room v5: models, downloads, download_parts, chats,
 │                                messages, bench_results, profiles_cache, bookmarks

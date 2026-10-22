@@ -241,4 +241,6 @@
     <string name="agent_compact">Compact context</string>
     <string name="agent_compacting">Compacting…</string>
     <string name="agent_compaction_divider">Context compacted</string>
+    <string name="settings_bench_entry">Measure prompt and generation speed on CPU and NPU</string>
+    <string name="settings_server_entry">Port, API key and LAN access for the OpenAI-compatible server</string>
 </resources>

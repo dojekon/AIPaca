@@ -1,5 +1,6 @@
 package com.aipaca.android.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -43,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -120,6 +122,13 @@ fun AppRoot(container: AppContainer) {
         }
     }
 
+    fun openSubPage(destination: Destinations) {
+        scope.launch { drawerState.close() }
+        navController.navigate(destination.route) {
+            launchSingleTop = true
+        }
+    }
+
     fun openChat(chatId: Long) {
         scope.launch { drawerState.close() }
         if (!onChat || activeChatId != chatId) {
@@ -164,7 +173,14 @@ fun AppRoot(container: AppContainer) {
                     Text(
                         text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                onClickLabel = stringResource(R.string.menu_about),
+                                role = Role.Button,
+                                onClick = { openSubPage(Destinations.About) },
+                            )
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                     Spacer(Modifier.height(8.dp))
                     Destinations.menuItems.forEach { destination ->
@@ -269,7 +285,7 @@ fun AppRoot(container: AppContainer) {
                     TopAppBar(
                         title = { Text(stringResource(currentTitleRes)) },
                         navigationIcon = {
-                            if (currentRoute == Destinations.Search.route) {
+                            if (Destinations.subPages.any { it.route == currentRoute }) {
                                 IconButton(onClick = { navController.popBackStack() }) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -338,12 +354,18 @@ fun AppRoot(container: AppContainer) {
                     )
                 }
                 composable(Destinations.Models.route) {
-                    ModelsScreen(onSearch = { navigate(Destinations.Search) })
+                    ModelsScreen(onSearch = { openSubPage(Destinations.Search) })
                 }
                 composable(Destinations.Search.route) { SearchScreen(container) }
                 composable(Destinations.Server.route) { ServerScreen(container) }
                 composable(Destinations.Bench.route) { BenchScreen() }
-                composable(Destinations.Settings.route) { SettingsScreen(container.settingsRepository) }
+                composable(Destinations.Settings.route) {
+                    SettingsScreen(
+                        settingsRepository = container.settingsRepository,
+                        onOpenBench = { openSubPage(Destinations.Bench) },
+                        onOpenServer = { openSubPage(Destinations.Server) },
+                    )
+                }
                 composable(Destinations.About.route) { AboutScreen() }
             }
         }

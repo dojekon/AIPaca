@@ -29,7 +29,10 @@ sealed class Destinations(val route: String, @param:StringRes val labelRes: Int)
         val start: Destinations = Chat
 
         val menuItems: List<Destinations> =
-            listOf(Models, Server, Bench, Settings, About)
+            listOf(Models, Settings)
+
+        val subPages: List<Destinations> =
+            listOf(Search, Server, Bench, About)
 
         val all: List<Destinations> =
             listOf(Chat, Models, Search, Server, Bench, Settings, About)
