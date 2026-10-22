@@ -261,4 +261,11 @@
     <string name="context_dialog_reload_hint">Applied on the next model load</string>
     <string name="context_dialog_save">Save</string>
     <string name="context_dialog_reset">Reset</string>
+    <string name="settings_npu_power_title">NPU power mode</string>
+    <string name="settings_npu_power_profile">From profile</string>
+    <string name="settings_npu_power_burst">Maximum (burst): fastest, heats up quickly</string>
+    <string name="settings_npu_power_sustained">Sustained performance</string>
+    <string name="settings_npu_power_balanced">Balanced</string>
+    <string name="settings_npu_power_saver">Power saver</string>
+    <string name="settings_npu_power_hint">Applied on the next model load</string>
 </resources>

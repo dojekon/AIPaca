@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.aipaca.android.engine.Accelerator
+import com.aipaca.android.engine.NpuPowerMode
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -126,5 +127,18 @@ class SettingsMappingTest {
         )
 
         assertEquals(Accelerator.GPU, preferences.toSettings().accelerator)
+    }
+
+    @Test
+    fun npuPowerModeDefaultsToProfileAndMapsStoredKey() {
+        assertEquals(NpuPowerMode.PROFILE, mutablePreferencesOf().toSettings().npuPowerMode)
+        assertEquals(
+            NpuPowerMode.POWER_SAVER,
+            mutablePreferencesOf(stringPreferencesKey("npuPowerMode") to "power_saver").toSettings().npuPowerMode,
+        )
+        assertEquals(
+            NpuPowerMode.PROFILE,
+            mutablePreferencesOf(stringPreferencesKey("npuPowerMode") to "turbo").toSettings().npuPowerMode,
+        )
     }
 }

@@ -7,6 +7,7 @@ object LaunchTarget {
     private const val HEXAGON_ENV_PREFIX = "GGML_HEXAGON_"
     private const val HEXAGON_DEVICES_ENV = "GGML_HEXAGON_DEVICES"
     private const val HEXAGON_ARCH_ENV = "GGML_HEXAGON_ARCH"
+    private const val HEXAGON_POWER_ENV = "GGML_HEXAGON_POWER_MODE"
     private const val HEXAGON_DEVICE_DEFAULT = "HTP0"
     private const val OPENCL_DEVICE = "GPUOpenCL"
     private const val OFFLOAD_LAYERS = 99
@@ -16,7 +17,15 @@ object LaunchTarget {
     fun hexagonDefaults(htpArch: Int?): Map<String, String> =
         if (htpArch != null && htpArch > 0) mapOf(HEXAGON_ARCH_ENV to htpArch.toString()) else emptyMap()
 
-    fun apply(doc: ProfileDoc, accelerator: Accelerator, htpArch: Int? = null): ProfileDoc {
+    fun hexagonPowerOverride(powerMode: NpuPowerMode): Map<String, String> =
+        powerMode.envValue?.let { mapOf(HEXAGON_POWER_ENV to it) } ?: emptyMap()
+
+    fun apply(
+        doc: ProfileDoc,
+        accelerator: Accelerator,
+        htpArch: Int? = null,
+        powerMode: NpuPowerMode = NpuPowerMode.DEFAULT,
+    ): ProfileDoc {
         val launch = doc.launch
         val withoutHexagon = launch.env.filterKeys { !it.startsWith(HEXAGON_ENV_PREFIX) }
         val extraArgs = stripDeviceSelection(launch.extraArgs)
@@ -36,6 +45,7 @@ object LaunchTarget {
             Accelerator.NPU -> {
                 val hexagonEnv = hexagonDefaults(htpArch).toMutableMap()
                 hexagonEnv.putAll(launch.env.filterKeys { it.startsWith(HEXAGON_ENV_PREFIX) })
+                hexagonEnv.putAll(hexagonPowerOverride(powerMode))
                 val devices = hexagonEnv[HEXAGON_DEVICES_ENV] ?: HEXAGON_DEVICE_DEFAULT
                 hexagonEnv[HEXAGON_DEVICES_ENV] = devices
                 doc.copy(

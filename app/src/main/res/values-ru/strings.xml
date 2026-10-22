@@ -261,4 +261,11 @@
     <string name="context_dialog_reload_hint">Применится при следующей загрузке модели</string>
     <string name="context_dialog_save">Сохранить</string>
     <string name="context_dialog_reset">Сбросить</string>
+    <string name="settings_npu_power_title">Режим питания NPU</string>
+    <string name="settings_npu_power_profile">По профилю</string>
+    <string name="settings_npu_power_burst">Максимум (burst): быстрее всего, быстро греется</string>
+    <string name="settings_npu_power_sustained">Длительная производительность</string>
+    <string name="settings_npu_power_balanced">Баланс</string>
+    <string name="settings_npu_power_saver">Экономия</string>
+    <string name="settings_npu_power_hint">Применится при следующей загрузке модели</string>
 </resources>

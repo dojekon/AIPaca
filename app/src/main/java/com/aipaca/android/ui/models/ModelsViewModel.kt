@@ -30,6 +30,7 @@ import com.aipaca.android.engine.Accelerator
 import com.aipaca.android.engine.EngineService
 import com.aipaca.android.engine.EngineState
 import com.aipaca.android.engine.LaunchTarget
+import com.aipaca.android.engine.NpuPowerMode
 import com.aipaca.android.engine.formatGigabytes
 import com.aipaca.android.engine.profiles.ProfileCatalog
 import com.aipaca.android.engine.profiles.ProfileCatalogLoader
@@ -111,6 +112,7 @@ class ModelsViewModel(
     private val matcherState = MutableStateFlow(ProfileMatcher(catalogState.value))
     private val matcher: ProfileMatcher get() = matcherState.value
     private val _accelerator = MutableStateFlow(Accelerator.DEFAULT)
+    private val _npuPowerMode = MutableStateFlow(NpuPowerMode.DEFAULT)
     val accelerator: StateFlow<Accelerator> = _accelerator.asStateFlow()
     private val device by lazy { DeviceInfo.current(appContext) }
 
@@ -127,6 +129,7 @@ class ModelsViewModel(
                 catalogState.value = filtered
                 matcherState.value = ProfileMatcher(filtered)
                 _accelerator.value = settings.accelerator
+                _npuPowerMode.value = settings.npuPowerMode
             }
         }
     }
@@ -215,7 +218,7 @@ class ModelsViewModel(
                 return@launch
             }
             val ramError = withContext(Dispatchers.IO) {
-                ramErrorMessage(entity, LaunchTarget.apply(doc, accel, device.htpVersion).withContextSize(entity.nCtx).launch)
+                ramErrorMessage(entity, LaunchTarget.apply(doc, accel, device.htpVersion, _npuPowerMode.value).withContextSize(entity.nCtx).launch)
             }
             if (ramError != null) {
                 _actionState.value = ActionState.Error(ramError)
@@ -223,7 +226,7 @@ class ModelsViewModel(
             }
             EngineService.start(appContext)
             val settings = container.settingsRepository.settings.first()
-            val launchDoc = LaunchTarget.apply(doc, accel, device.htpVersion).withContextSize(entity.nCtx)
+            val launchDoc = LaunchTarget.apply(doc, accel, device.htpVersion, _npuPowerMode.value).withContextSize(entity.nCtx)
             val result = withContext(Dispatchers.IO) {
                 engineManager.load(
                     entity.path,
@@ -355,7 +358,7 @@ class ModelsViewModel(
             val doc = withContext(Dispatchers.IO) {
                 matcher.match(device, entity.fileName, null, accel).profile?.doc
             }
-            val launch = doc?.let { LaunchTarget.apply(it, accel, device.htpVersion).launch } ?: LaunchDoc()
+            val launch = doc?.let { LaunchTarget.apply(it, accel, device.htpVersion, _npuPowerMode.value).launch } ?: LaunchDoc()
             val weights = File(entity.path).length()
             var metadataError: String? = null
             val meta = withContext(Dispatchers.IO) {

@@ -94,6 +94,30 @@ class LaunchTargetTest {
     }
 
     @Test
+    fun powerModeOverridesProfileOnNpu() {
+        val doc = hexagonDoc().copy(
+            launch = hexagonDoc().launch.copy(env = mapOf("GGML_HEXAGON_POWER_MODE" to "sustained_high_performance")),
+        )
+
+        assertEquals(
+            "sustained_high_performance",
+            LaunchTarget.apply(doc, Accelerator.NPU).launch.env["GGML_HEXAGON_POWER_MODE"],
+        )
+        assertEquals(
+            "balanced",
+            LaunchTarget.apply(doc, Accelerator.NPU, powerMode = NpuPowerMode.BALANCED)
+                .launch.env["GGML_HEXAGON_POWER_MODE"],
+        )
+    }
+
+    @Test
+    fun powerModeIsIgnoredOffNpu() {
+        val applied = LaunchTarget.apply(openclDoc(), Accelerator.CPU, powerMode = NpuPowerMode.BURST)
+
+        assertEquals(null, applied.launch.env["GGML_HEXAGON_POWER_MODE"])
+    }
+
+    @Test
     fun npuHonoursProfileHexagonDevice() {
         val doc = hexagonDoc().copy(
             launch = hexagonDoc().launch.copy(

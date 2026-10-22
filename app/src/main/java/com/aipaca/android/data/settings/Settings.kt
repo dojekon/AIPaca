@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.aipaca.android.engine.Accelerator
+import com.aipaca.android.engine.NpuPowerMode
 
 object SettingsKeys {
     val THEME_MODE = stringPreferencesKey("themeMode")
@@ -13,6 +14,7 @@ object SettingsKeys {
     val DOWNLOAD_CONNECTIONS = intPreferencesKey("downloadConnections")
     val WIFI_ONLY = booleanPreferencesKey("wifiOnly")
     val ACCELERATOR = stringPreferencesKey("accelerator")
+    val NPU_POWER_MODE = stringPreferencesKey("npuPowerMode")
     val GPU_ENABLED = booleanPreferencesKey("gpuEnabled")
     val NPU_ENABLED = booleanPreferencesKey("npuEnabled")
     val PROFILES_REPO_URL = stringPreferencesKey("profilesRepoUrl")
@@ -42,6 +44,7 @@ data class Settings(
     val downloadConnections: Int = DEFAULT_DOWNLOAD_CONNECTIONS,
     val wifiOnly: Boolean = false,
     val accelerator: Accelerator = Accelerator.DEFAULT,
+    val npuPowerMode: NpuPowerMode = NpuPowerMode.DEFAULT,
     val profilesRepoUrl: String = "",
     val serverPort: Int = DEFAULT_SERVER_PORT,
     val serverApiKey: String = "",
@@ -57,6 +60,7 @@ fun Preferences.toSettings(): Settings {
         downloadConnections = this[SettingsKeys.DOWNLOAD_CONNECTIONS] ?: defaults.downloadConnections,
         wifiOnly = this[SettingsKeys.WIFI_ONLY] ?: defaults.wifiOnly,
         accelerator = this[SettingsKeys.ACCELERATOR]?.let(Accelerator::fromKey) ?: legacyAccelerator(),
+        npuPowerMode = NpuPowerMode.fromKey(this[SettingsKeys.NPU_POWER_MODE]),
         profilesRepoUrl = this[SettingsKeys.PROFILES_REPO_URL] ?: defaults.profilesRepoUrl,
         serverPort = this[SettingsKeys.SERVER_PORT] ?: defaults.serverPort,
         serverApiKey = this[SettingsKeys.SERVER_API_KEY] ?: defaults.serverApiKey,

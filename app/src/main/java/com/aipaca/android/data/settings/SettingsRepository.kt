@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import com.aipaca.android.engine.Accelerator
+import com.aipaca.android.engine.NpuPowerMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -52,6 +53,10 @@ class SettingsRepository(private val context: Context) {
             it.remove(SettingsKeys.GPU_ENABLED)
             it.remove(SettingsKeys.NPU_ENABLED)
         }
+    }
+
+    suspend fun setNpuPowerMode(mode: NpuPowerMode) {
+        context.settingsDataStore.edit { it[SettingsKeys.NPU_POWER_MODE] = mode.storageKey }
     }
 
     suspend fun setProfilesRepoUrl(url: String) {

@@ -63,6 +63,7 @@ import com.aipaca.android.data.settings.LANGUAGE_SYSTEM
 import com.aipaca.android.data.settings.Settings
 import com.aipaca.android.data.settings.SettingsRepository
 import com.aipaca.android.engine.Accelerator
+import com.aipaca.android.engine.NpuPowerMode
 import com.aipaca.android.ui.applyLanguage
 import java.io.File
 import java.text.DateFormat
@@ -317,6 +318,26 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (settings.accelerator == Accelerator.NPU) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.settings_npu_power_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                NPU_POWER_OPTIONS.forEach { (mode, labelRes) ->
+                    AcceleratorOption(
+                        label = stringResource(labelRes),
+                        selected = settings.npuPowerMode == mode,
+                        onSelect = { scope.launch { settingsRepository.setNpuPowerMode(mode) } },
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings_npu_power_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.height(24.dp))
             Text(
                 text = stringResource(R.string.settings_storage_title),
@@ -444,3 +465,11 @@ private fun SettingsEntry(title: String, description: String, onClick: () -> Uni
             .clickable(role = Role.Button, onClick = onClick),
     )
 }
+
+private val NPU_POWER_OPTIONS = listOf(
+    NpuPowerMode.PROFILE to R.string.settings_npu_power_profile,
+    NpuPowerMode.BURST to R.string.settings_npu_power_burst,
+    NpuPowerMode.SUSTAINED to R.string.settings_npu_power_sustained,
+    NpuPowerMode.BALANCED to R.string.settings_npu_power_balanced,
+    NpuPowerMode.POWER_SAVER to R.string.settings_npu_power_saver,
+)
