@@ -32,7 +32,7 @@ import com.aipaca.android.data.db.entity.ProfileCacheEntity
         ProfileCacheEntity::class,
         BookmarkEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AiPacaDatabase : RoomDatabase() {
@@ -82,6 +82,12 @@ abstract class AiPacaDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE messages ADD COLUMN toolCalls TEXT")
                 db.execSQL("ALTER TABLE messages ADD COLUMN toolCallId TEXT")
                 db.execSQL("ALTER TABLE models ADD COLUMN toolsSupported INTEGER")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE models ADD COLUMN nCtx INTEGER")
             }
         }
     }

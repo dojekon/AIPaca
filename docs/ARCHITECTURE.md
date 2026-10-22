@@ -16,11 +16,14 @@ com.aipaca.android
 │    подэкраны — Destinations.subPages со стрелкой «назад»;
 │    загрузки — dropdown в топбаре «Моделей»)
 │
-├─ data/db                       Room v5: models, downloads, download_parts, chats,
+├─ data/db                       Room v6: models, downloads, download_parts, chats,
 │                                messages, bench_results, profiles_cache, bookmarks
 │                                (MIGRATION_1_2: messages.reasoning; 2_3: bookmarks;
 │                                3_4: download_parts.downloadedBytes; 4_5: chats.mode,
-│                                messages.toolCalls/toolCallId, models.toolsSupported)
+│                                messages.toolCalls/toolCallId, models.toolsSupported;
+│                                5_6: models.nCtx — контекст модели, null = из профиля)
+├─ data/gguf                     readGgufMetadata(): заголовок GGUF (arch, слои, KV-головы,
+│                                размерности, SWA-паттерн, shared KV) для оценки памяти
 ├─ data/device                   DeviceInfo → DeviceDescriptor
 │                                deviceKey = vendor-soc/ramGb (qcom-sm8650/12gb),
 │                                htpVersion по таблице SoC (sm8650 → 75)

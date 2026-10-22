@@ -14,12 +14,23 @@ import com.aipaca.android.AppContainer
 import com.aipaca.android.R
 import com.aipaca.android.data.db.entity.ModelEntity
 import com.aipaca.android.data.device.DeviceInfo
+import com.aipaca.android.data.gguf.GgufMetadata
+import com.aipaca.android.data.gguf.readGgufMetadata
+import com.aipaca.android.engine.CONTEXT_SLIDER_MIN
+import com.aipaca.android.engine.ContextMemoryEstimate
+import com.aipaca.android.engine.MemoryFit
+import com.aipaca.android.engine.RAM_RESERVE_BYTES
+import com.aipaca.android.engine.contextSliderMax
+import com.aipaca.android.engine.estimateContextMemory
+import com.aipaca.android.engine.exceedsNpuSession
+import com.aipaca.android.engine.memoryFit
+import com.aipaca.android.engine.profiles.LaunchDoc
+import com.aipaca.android.engine.withContextSize
 import com.aipaca.android.engine.Accelerator
 import com.aipaca.android.engine.EngineService
 import com.aipaca.android.engine.EngineState
 import com.aipaca.android.engine.LaunchTarget
 import com.aipaca.android.engine.formatGigabytes
-import com.aipaca.android.engine.hasEnoughRam
 import com.aipaca.android.engine.profiles.ProfileCatalog
 import com.aipaca.android.engine.profiles.ProfileCatalogLoader
 import com.aipaca.android.engine.profiles.ProfileMatcher
@@ -58,6 +69,21 @@ class ModelsViewModel(
         val profileJson: String?,
         val loaded: Boolean,
         val matched: Boolean,
+        val contextSize: Int,
+        val contextCustom: Boolean,
+    )
+
+    data class ContextEditorUi(
+        val modelId: Long,
+        val modelName: String,
+        val value: Int,
+        val profileDefault: Int,
+        val maxValue: Int,
+        val estimate: ContextMemoryEstimate?,
+        val availableBytes: Long,
+        val fit: MemoryFit?,
+        val npuWindowExceeded: Boolean,
+        val metadataError: String?,
     )
 
     sealed interface ImportState {
@@ -110,6 +136,14 @@ class ModelsViewModel(
 
     private val _actionState = MutableStateFlow<ActionState>(ActionState.Idle)
     val actionState: StateFlow<ActionState> = _actionState.asStateFlow()
+
+    private val _contextEditor = MutableStateFlow<ContextEditorUi?>(null)
+    val contextEditor: StateFlow<ContextEditorUi?> = _contextEditor.asStateFlow()
+
+    private val metadataCache = HashMap<String, GgufMetadata>()
+    private var editorLaunch: LaunchDoc? = null
+    private var editorMeta: GgufMetadata? = null
+    private var editorWeightsBytes = 0L
 
     private val _recentLog = MutableStateFlow<List<String>>(emptyList())
     val recentLog: StateFlow<List<String>> = _recentLog.asStateFlow()
@@ -180,14 +214,16 @@ class ModelsViewModel(
                 _actionState.value = ActionState.Error(appContext.getString(R.string.models_profile_missing))
                 return@launch
             }
-            val ramError = withContext(Dispatchers.IO) { ramErrorMessage(entity) }
+            val ramError = withContext(Dispatchers.IO) {
+                ramErrorMessage(entity, LaunchTarget.apply(doc, accel).withContextSize(entity.nCtx).launch)
+            }
             if (ramError != null) {
                 _actionState.value = ActionState.Error(ramError)
                 return@launch
             }
             EngineService.start(appContext)
             val settings = container.settingsRepository.settings.first()
-            val launchDoc = LaunchTarget.apply(doc, accel)
+            val launchDoc = LaunchTarget.apply(doc, accel).withContextSize(entity.nCtx)
             val result = withContext(Dispatchers.IO) {
                 engineManager.load(
                     entity.path,
@@ -211,7 +247,7 @@ class ModelsViewModel(
             val retry = withContext(Dispatchers.IO) {
                 engineManager.load(
                     entity.path,
-                    LaunchTarget.apply(fallback, Accelerator.CPU),
+                    LaunchTarget.apply(fallback, Accelerator.CPU).withContextSize(entity.nCtx),
                     apiKey = settings.serverApiKey,
                     lanEnabled = settings.serverLanEnabled,
                     requestedPort = settings.serverPort,
@@ -278,6 +314,7 @@ class ModelsViewModel(
         accelerator: Accelerator,
     ): ModelUi {
         val match = matcher.match(device, fileName, null, accelerator)
+        val profileContext = match.profile?.doc?.launch?.nCtx ?: LaunchDoc().nCtx
         return ModelUi(
             id = id,
             name = fileName.substringBeforeLast('.', fileName),
@@ -289,20 +326,137 @@ class ModelsViewModel(
             profileJson = match.profile?.doc?.let(::profileJsonForShare),
             loaded = state is EngineState.Ready && state.modelPath == path,
             matched = match.profile != null,
+            contextSize = nCtx ?: profileContext,
+            contextCustom = nCtx != null,
         )
     }
 
-    private fun ramErrorMessage(entity: ModelEntity): String? {
+    private fun ramErrorMessage(entity: ModelEntity, launch: LaunchDoc): String? {
         val fileBytes = File(entity.path).length()
         val manager = appContext.getSystemService(ActivityManager::class.java) ?: return null
         val info = ActivityManager.MemoryInfo()
         manager.getMemoryInfo(info)
-        if (hasEnoughRam(fileBytes, info.availMem)) return null
+        val estimate = metadataFor(entity.path)?.let { meta ->
+            estimateContextMemory(meta, fileBytes, launch.nCtx, launch.kvTypeK, launch.kvTypeV, launch.ubatchSize)
+        }
+        val required = estimate?.let { it.totalBytes + RAM_RESERVE_BYTES } ?: ramRequiredBytes(fileBytes)
+        if (info.availMem >= required) return null
         return appContext.getString(
             R.string.preflight_ram_low,
-            formatGigabytes(ramRequiredBytes(fileBytes)),
+            formatGigabytes(required),
             formatGigabytes(info.availMem),
         )
+    }
+
+    fun openContextEditor(modelId: Long) {
+        viewModelScope.launch {
+            val entity = models.value.firstOrNull { it.id == modelId } ?: return@launch
+            val accel = _accelerator.value
+            val doc = withContext(Dispatchers.IO) {
+                matcher.match(device, entity.fileName, null, accel).profile?.doc
+            }
+            val launch = doc?.let { LaunchTarget.apply(it, accel).launch } ?: LaunchDoc()
+            val weights = File(entity.path).length()
+            var metadataError: String? = null
+            val meta = withContext(Dispatchers.IO) {
+                try {
+                    metadataFor(entity.path, rethrow = true)
+                } catch (e: Exception) {
+                    metadataError = e.message ?: e.javaClass.simpleName
+                    null
+                }
+            }
+            editorLaunch = launch
+            editorMeta = meta
+            editorWeightsBytes = weights
+            val maxValue = contextSliderMax(meta)
+            val initial = (entity.nCtx ?: launch.nCtx).coerceIn(CONTEXT_SLIDER_MIN, maxValue)
+            _contextEditor.value = buildEditor(
+                modelId = entity.id,
+                modelName = entity.fileName.substringBeforeLast('.', entity.fileName),
+                value = initial,
+                profileDefault = launch.nCtx,
+                maxValue = maxValue,
+                metadataError = metadataError,
+                available = withContext(Dispatchers.IO) { availableForModel() },
+            )
+        }
+    }
+
+    fun updateContextDraft(value: Int) {
+        val current = _contextEditor.value ?: return
+        _contextEditor.value = buildEditor(
+            modelId = current.modelId,
+            modelName = current.modelName,
+            value = value.coerceIn(CONTEXT_SLIDER_MIN, current.maxValue),
+            profileDefault = current.profileDefault,
+            maxValue = current.maxValue,
+            metadataError = current.metadataError,
+            available = current.availableBytes,
+        )
+    }
+
+    fun saveContext(useProfileDefault: Boolean) {
+        val current = _contextEditor.value ?: return
+        _contextEditor.value = null
+        viewModelScope.launch(Dispatchers.IO) {
+            modelDao.updateContextSize(current.modelId, if (useProfileDefault) null else current.value)
+        }
+    }
+
+    fun dismissContextEditor() {
+        _contextEditor.value = null
+    }
+
+    private fun buildEditor(
+        modelId: Long,
+        modelName: String,
+        value: Int,
+        profileDefault: Int,
+        maxValue: Int,
+        metadataError: String?,
+        available: Long,
+    ): ContextEditorUi {
+        val launch = editorLaunch ?: LaunchDoc()
+        val estimate = editorMeta?.let { meta ->
+            estimateContextMemory(meta, editorWeightsBytes, value, launch.kvTypeK, launch.kvTypeV, launch.ubatchSize)
+        }
+        return ContextEditorUi(
+            modelId = modelId,
+            modelName = modelName,
+            value = value,
+            profileDefault = profileDefault,
+            maxValue = maxValue,
+            estimate = estimate,
+            availableBytes = available,
+            fit = estimate?.let { memoryFit(it.totalBytes, available) },
+            npuWindowExceeded = _accelerator.value == Accelerator.NPU && estimate != null && exceedsNpuSession(estimate),
+            metadataError = metadataError,
+        )
+    }
+
+    private fun availableForModel(): Long {
+        val manager = appContext.getSystemService(ActivityManager::class.java) ?: return 0L
+        val info = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(info)
+        val ready = engineManager.state.value as? EngineState.Ready ?: return info.availMem
+        val loadedFile = File(ready.modelPath)
+        val loadedMeta = metadataFor(ready.modelPath)
+        val loadedContext = engineManager.contextSize ?: return info.availMem + loadedFile.length()
+        val reclaimable = loadedMeta?.let { meta ->
+            estimateContextMemory(meta, loadedFile.length(), loadedContext, null, null, LaunchDoc().ubatchSize).totalBytes
+        } ?: loadedFile.length()
+        return info.availMem + reclaimable
+    }
+
+    private fun metadataFor(path: String, rethrow: Boolean = false): GgufMetadata? {
+        synchronized(metadataCache) { metadataCache[path] }?.let { return it }
+        return try {
+            readGgufMetadata(File(path)).also { meta -> synchronized(metadataCache) { metadataCache[path] = meta } }
+        } catch (e: Exception) {
+            if (rethrow) throw e
+            null
+        }
     }
 
     private fun queryMetadata(uri: Uri): Pair<String?, Long?> {

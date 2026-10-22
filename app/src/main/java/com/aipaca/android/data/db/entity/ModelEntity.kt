@@ -16,4 +16,5 @@ data class ModelEntity(
     val addedAt: Long,
     val lastUsedAt: Long? = null,
     val toolsSupported: Int? = null,
+    val nCtx: Int? = null,
 )

@@ -28,4 +28,7 @@ interface ModelDao {
 
     @Query("UPDATE models SET toolsSupported = :value WHERE path = :path")
     suspend fun updateToolsSupported(path: String, value: Int?)
+
+    @Query("UPDATE models SET nCtx = :nCtx WHERE id = :id")
+    suspend fun updateContextSize(id: Long, nCtx: Int?)
 }

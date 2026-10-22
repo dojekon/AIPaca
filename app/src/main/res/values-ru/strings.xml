@@ -243,4 +243,22 @@
     <string name="agent_compaction_divider">Контекст сжат</string>
     <string name="settings_bench_entry">Скорость обработки промпта и генерации на CPU и NPU</string>
     <string name="settings_server_entry">Порт, API-ключ и доступ из локальной сети для OpenAI-совместимого сервера</string>
+    <string name="models_context_label">Контекст: %1$d токенов</string>
+    <string name="models_context_custom">Контекст: %1$d токенов (вручную)</string>
+    <string name="context_dialog_title">Размер контекста</string>
+    <string name="context_dialog_value">%1$d токенов</string>
+    <string name="context_dialog_range">Профиль: %1$d · максимум модели: %2$d</string>
+    <string name="context_dialog_weights">Веса модели</string>
+    <string name="context_dialog_kv">KV-кэш</string>
+    <string name="context_dialog_compute">Буферы и служебная память</string>
+    <string name="context_dialog_gb">%1$s ГБ</string>
+    <string name="context_dialog_total">Итого %1$s ГБ из %2$s ГБ доступно</string>
+    <string name="context_fit_ok">Помещается в память</string>
+    <string name="context_fit_tight">Впритык: система может закрыть другие приложения</string>
+    <string name="context_fit_too_big">Не помещается: загрузка может завершиться ошибкой</string>
+    <string name="context_npu_window">Больше одной NPU-сессии (3,1 ГБ): веса будут перемапливаться, это медленнее</string>
+    <string name="context_dialog_meta_error">Не удалось прочитать метаданные модели: %1$s</string>
+    <string name="context_dialog_reload_hint">Применится при следующей загрузке модели</string>
+    <string name="context_dialog_save">Сохранить</string>
+    <string name="context_dialog_reset">Сбросить</string>
 </resources>

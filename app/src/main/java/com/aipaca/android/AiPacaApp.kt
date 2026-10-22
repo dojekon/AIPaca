@@ -34,6 +34,7 @@ class AppContainer(context: Context) {
                 AiPacaDatabase.MIGRATION_2_3,
                 AiPacaDatabase.MIGRATION_3_4,
                 AiPacaDatabase.MIGRATION_4_5,
+                AiPacaDatabase.MIGRATION_5_6,
             )
             .build()
     }

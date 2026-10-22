@@ -243,4 +243,22 @@
     <string name="agent_compaction_divider">Context compacted</string>
     <string name="settings_bench_entry">Measure prompt and generation speed on CPU and NPU</string>
     <string name="settings_server_entry">Port, API key and LAN access for the OpenAI-compatible server</string>
+    <string name="models_context_label">Context: %1$d tokens</string>
+    <string name="models_context_custom">Context: %1$d tokens (custom)</string>
+    <string name="context_dialog_title">Context size</string>
+    <string name="context_dialog_value">%1$d tokens</string>
+    <string name="context_dialog_range">Profile: %1$d · model maximum: %2$d</string>
+    <string name="context_dialog_weights">Model weights</string>
+    <string name="context_dialog_kv">KV cache</string>
+    <string name="context_dialog_compute">Buffers and runtime</string>
+    <string name="context_dialog_gb">%1$s GB</string>
+    <string name="context_dialog_total">Total %1$s GB of %2$s GB available</string>
+    <string name="context_fit_ok">Fits in memory</string>
+    <string name="context_fit_tight">Tight: the system may close other apps</string>
+    <string name="context_fit_too_big">Does not fit: loading may fail</string>
+    <string name="context_npu_window">Larger than one NPU session (3.1 GB): weights will be remapped, which is slower</string>
+    <string name="context_dialog_meta_error">Cannot read model metadata: %1$s</string>
+    <string name="context_dialog_reload_hint">Applied on the next model load</string>
+    <string name="context_dialog_save">Save</string>
+    <string name="context_dialog_reset">Reset</string>
 </resources>

@@ -58,10 +58,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material3.Slider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aipaca.android.R
+import com.aipaca.android.engine.snapContext
+import com.aipaca.android.engine.formatGigabytes
+import com.aipaca.android.engine.MemoryFit
+import com.aipaca.android.engine.CONTEXT_SLIDER_MIN
 import com.aipaca.android.data.db.entity.ModelEntity
 import com.aipaca.android.engine.EngineState
 import com.aipaca.android.ui.common.buildProfileShareText
@@ -80,6 +86,7 @@ fun ModelsScreen(
     val importState by viewModel.importState.collectAsStateWithLifecycle()
     val actionState by viewModel.actionState.collectAsStateWithLifecycle()
     val recentLog by viewModel.recentLog.collectAsStateWithLifecycle()
+    val contextEditor by viewModel.contextEditor.collectAsStateWithLifecycle()
     val shareProfileSubject = stringResource(R.string.share_profile_subject)
 
     var pendingDelete by remember { mutableStateOf<ModelEntity?>(null) }
@@ -203,6 +210,7 @@ fun ModelsScreen(
                         onLoad = { entities.firstOrNull { it.id == model.id }?.let(viewModel::loadModel) },
                         onUnload = viewModel::unloadModel,
                         onDelete = { pendingDelete = entities.firstOrNull { it.id == model.id } },
+                        onEditContext = { viewModel.openContextEditor(model.id) },
                         onShareProfile = model.profileJson?.let { json ->
                             {
                                 context.shareText(
@@ -215,6 +223,16 @@ fun ModelsScreen(
                 }
             }
         }
+    }
+
+    contextEditor?.let { editor ->
+        ContextSizeDialog(
+            editor = editor,
+            onValueChange = viewModel::updateContextDraft,
+            onSave = { viewModel.saveContext(useProfileDefault = false) },
+            onReset = { viewModel.saveContext(useProfileDefault = true) },
+            onDismiss = viewModel::dismissContextEditor,
+        )
     }
 
     pendingDelete?.let { entity ->
@@ -376,6 +394,7 @@ private fun ModelRow(
     onLoad: () -> Unit,
     onUnload: () -> Unit,
     onDelete: () -> Unit,
+    onEditContext: () -> Unit,
     onShareProfile: (() -> Unit)?,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -412,6 +431,17 @@ private fun ModelRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(
+                        if (model.contextCustom) R.string.models_context_custom else R.string.models_context_label,
+                        model.contextSize,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable(enabled = !busy, role = Role.Button, onClick = onEditContext)
+                        .padding(vertical = 4.dp),
                 )
             }
             if (model.loaded) {
@@ -463,6 +493,103 @@ private fun Badge(text: String) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun ContextSizeDialog(
+    editor: ModelsViewModel.ContextEditorUi,
+    onValueChange: (Int) -> Unit,
+    onSave: () -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.context_dialog_title)) },
+        text = {
+            Column {
+                Text(editor.modelName, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.context_dialog_value, editor.value),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Slider(
+                    value = editor.value.toFloat(),
+                    onValueChange = { onValueChange(snapContext(it)) },
+                    valueRange = CONTEXT_SLIDER_MIN.toFloat()..editor.maxValue.toFloat(),
+                )
+                Text(
+                    text = stringResource(R.string.context_dialog_range, editor.profileDefault, editor.maxValue),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                val estimate = editor.estimate
+                if (estimate == null) {
+                    Text(
+                        text = stringResource(R.string.context_dialog_meta_error, editor.metadataError.orEmpty()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else {
+                    MemoryLine(stringResource(R.string.context_dialog_weights), estimate.weightsBytes)
+                    MemoryLine(stringResource(R.string.context_dialog_kv), estimate.kvBytes)
+                    MemoryLine(stringResource(R.string.context_dialog_compute), estimate.computeBytes)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.context_dialog_total,
+                            formatGigabytes(estimate.totalBytes),
+                            formatGigabytes(editor.availableBytes),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    editor.fit?.let { fit ->
+                        val (textRes, color) = when (fit) {
+                            MemoryFit.FITS -> R.string.context_fit_ok to MaterialTheme.colorScheme.primary
+                            MemoryFit.TIGHT -> R.string.context_fit_tight to MaterialTheme.colorScheme.tertiary
+                            MemoryFit.TOO_BIG -> R.string.context_fit_too_big to MaterialTheme.colorScheme.error
+                        }
+                        Text(stringResource(textRes), style = MaterialTheme.typography.bodyMedium, color = color)
+                    }
+                    if (editor.npuWindowExceeded) {
+                        Text(
+                            text = stringResource(R.string.context_npu_window),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.context_dialog_reload_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSave) { Text(stringResource(R.string.context_dialog_save)) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onReset) { Text(stringResource(R.string.context_dialog_reset)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.models_cancel)) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun MemoryLine(label: String, bytes: Long) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Text(
+            text = stringResource(R.string.context_dialog_gb, formatGigabytes(bytes)),
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }

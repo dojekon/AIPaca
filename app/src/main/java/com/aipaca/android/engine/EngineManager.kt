@@ -1,6 +1,7 @@
 package com.aipaca.android.engine
 
 import android.content.Context
+import android.util.Log
 import com.aipaca.android.R
 import com.aipaca.android.engine.profiles.ProfileDoc
 import com.aipaca.android.engine.profiles.ServerArgBuilder
@@ -264,6 +265,7 @@ class EngineManager(context: Context) {
                     while (true) {
                         val line = input.readLine() ?: break
                         logRing.add(line)
+                        if (isMemoryLogLine(line)) Log.i(LOGCAT_TAG, line)
                     }
                 }
             } catch (_: IOException) {
@@ -343,6 +345,7 @@ class EngineManager(context: Context) {
         private const val HOST_LAN = "0.0.0.0"
         private const val ENGINE_BINARY = "libllama-server.so"
         private const val LD_LIBRARY_PATH = "LD_LIBRARY_PATH"
+        private const val LOGCAT_TAG = "LlamaServer"
         private const val ADSP_LIBRARY_PATH = "ADSP_LIBRARY_PATH"
         private const val THREAD_LOG_READER = "engine-log-reader"
         private const val THREAD_EXIT_WATCHER = "engine-exit-watcher"

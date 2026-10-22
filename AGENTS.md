@@ -26,7 +26,7 @@ adb logcat -d | grep -E "FATAL|AndroidRuntime" | head
 ./scripts/build-engine.sh
 ```
 
-Expected minimum: 549 tests, BUILD SUCCESSFUL, APK ~92 MB. The full check above is still
+Expected minimum: 614 tests, BUILD SUCCESSFUL, APK ~92 MB. The full check above is still
 required before completing any task.
 
 ## Code map
@@ -39,10 +39,12 @@ required before completing any task.
   DownloadService (FGS), DownloadWorker (WorkManager).
 - `data/profiles/remote` — ProfileFetcher/ProfileRepository (ETag cache, auto-refresh 24h/Wi-Fi).
 - `data/settings` — DataStore (`Settings`), TokenCipher (Keystore, `enc:v1:`).
-- `data/db` — Room v5, migrations `MIGRATION_1_2/2_3/3_4/4_5`; v5 adds `chats.mode`
+- `data/db` — Room v6, migrations `MIGRATION_1_2/2_3/3_4/4_5/5_6`; v5 adds `chats.mode`
   (`'chat'`/`'agent'`), `messages.toolCalls`/`toolCallId`, `models.toolsSupported`
-  (null=unknown, 0/1).
+  (null=unknown, 0/1); v6 adds `models.nCtx` (null = profile context).
+- `data/gguf` — `readGgufMetadata()`: GGUF header reader (arch, layers, KV heads/dims, SWA, shared KV).
 - `engine` — EngineManager (llama-server process), EngineService (START_STICKY),
+  `ContextMemory` (weights + KV + buffers estimate for the context slider),
   BenchRunner (llama-bench), Preflight, `Accelerator`/`LaunchTarget` (CPU/GPU/NPU accelerator
   selection and launch overrides), `profiles/ProfileMatcher` (profile matching),
   `profiles/ProfilePolicy` (accelerator filter / CPU fallback).
