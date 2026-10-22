@@ -113,8 +113,19 @@ class ChatTitleTest {
     }
 
     @Test
-    fun laterExchangeDoesNotRegenerate() {
-        assertFalse(shouldGenerateTitle(4, "Тема", "Тема"))
+    fun autoTitleIsRetriedOnLaterExchanges() {
+        assertTrue(shouldGenerateTitle(4, "Тема", "Тема"))
+        assertTrue(shouldGenerateTitle(TITLE_RETRY_MAX_MESSAGES, "Тема", "Тема"))
+    }
+
+    @Test
+    fun retryStopsAfterWindow() {
+        assertFalse(shouldGenerateTitle(TITLE_RETRY_MAX_MESSAGES + 1, "Тема", "Тема"))
+    }
+
+    @Test
+    fun generatedTitleIsNotRegeneratedLater() {
+        assertFalse(shouldGenerateTitle(4, "Сгенерированная тема", "Тема"))
     }
 
     @Test
@@ -129,7 +140,7 @@ class ChatTitleTest {
         assertEquals(0.2, request.temperature, 0.0)
         assertEquals(24, request.maxTokens)
         assertEquals("user", request.messages.single().role)
-        assertTrue(request.systemPrompt.orEmpty().contains("заголов"))
+        assertTrue(request.systemPrompt.orEmpty().contains("same language as the user"))
     }
 
     @Test
@@ -141,13 +152,23 @@ class ChatTitleTest {
     }
 
     @Test
-    fun longMessagesAreTruncatedTo500CharsEach() {
+    fun userMessageIsTruncatedTo500AndReplyTo200Chars() {
         val user = "u".repeat(600)
         val assistant = "a".repeat(700)
 
         val content = buildTitleRequest(user, assistant).messages.single().content
 
-        assertEquals("u".repeat(500) + "\n" + "a".repeat(500), content)
+        assertEquals(
+            "User message:\n" + "u".repeat(500) + "\n\nAssistant reply (beginning):\n" + "a".repeat(200),
+            content,
+        )
+    }
+
+    @Test
+    fun emptyReplyIsOmitted() {
+        val content = buildTitleRequest("Привет", "  ").messages.single().content
+
+        assertEquals("User message:\nПривет", content)
     }
 
     @Test

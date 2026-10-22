@@ -648,26 +648,34 @@ class ChatViewModel(
                 val serverUrl = engineManager.serverUrl ?: return@launch
                 val history = messageDao.getForChat(chatId)
                 val conversational = history.filter {
-                    it.role == ROLE_USER || (it.role == ROLE_ASSISTANT && decodeToolCalls(it.toolCalls).isEmpty())
+                    it.role == ROLE_USER ||
+                        (it.role == ROLE_ASSISTANT && it.content.isNotBlank() && decodeToolCalls(it.toolCalls).isEmpty())
                 }
-                if (conversational.size != TITLE_EXCHANGE_MESSAGES) return@launch
                 val userMessage = conversational.firstOrNull { it.role == ROLE_USER } ?: return@launch
+                val assistantMessage = conversational.firstOrNull { it.role == ROLE_ASSISTANT } ?: return@launch
                 val chat = chatDao.observeById(chatId).first() ?: return@launch
                 val autoTitle = chatTitleFrom(userMessage.content)
                 if (!shouldGenerateTitle(conversational.size, chat.title, autoTitle)) return@launch
-                val assistantMessage = conversational.lastOrNull { it.role == ROLE_ASSISTANT }?.content.orEmpty()
                 val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
                 val generated = chatClient.complete(
                     serverUrl = serverUrl,
                     apiKey = apiKey,
-                    request = buildTitleRequest(userMessage.content, assistantMessage),
+                    request = buildTitleRequest(userMessage.content, assistantMessage.content),
                     timeoutSeconds = TITLE_TIMEOUT_SECONDS,
-                ).getOrNull()
-                val title = sanitizeGeneratedTitle(generated) ?: return@launch
+                ).getOrElse { error ->
+                    Log.w(TITLE_TAG, "Title request failed", error)
+                    return@launch
+                }
+                val title = sanitizeGeneratedTitle(generated)
+                if (title == null) {
+                    Log.w(TITLE_TAG, "Title response rejected: ${generated.take(80)}")
+                    return@launch
+                }
                 chatDao.updateTitleIfMatches(chatId, title, autoTitle)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w(TITLE_TAG, "Title generation failed", e)
             }
         }
     }
@@ -700,6 +708,8 @@ class ChatViewModel(
         private const val COMPACTION_TIMEOUT_SECONDS = 60L
 
         private const val TAG = "AgentContext"
+
+        private const val TITLE_TAG = "ChatTitle"
 
         fun factory(chatId: Long, initialMode: String = ChatMode.CHAT): ViewModelProvider.Factory = viewModelFactory {
             initializer {

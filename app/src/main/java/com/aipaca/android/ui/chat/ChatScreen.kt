@@ -211,7 +211,7 @@ fun ChatScreen(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = modelName ?: chatTitle ?: stringResource(R.string.chat_title_new),
+                                text = chatTitle ?: stringResource(R.string.chat_title_new),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
@@ -231,16 +231,19 @@ fun ChatScreen(
                                 }
                             }
                         }
-                        agentStep?.let { step ->
+                        val subtitle = listOfNotNull(
+                            modelName,
+                            agentStep?.let { step ->
+                                stringResource(R.string.agent_step, step.step, step.maxIterations)
+                            },
+                        ).joinToString(separator = " · ")
+                        if (subtitle.isNotEmpty()) {
                             Text(
-                                text = stringResource(
-                                    R.string.agent_step,
-                                    step.step,
-                                    step.maxIterations,
-                                ),
+                                text = subtitle,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
