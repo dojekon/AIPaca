@@ -268,4 +268,5 @@
     <string name="settings_npu_power_balanced">Баланс</string>
     <string name="settings_npu_power_saver">Экономия</string>
     <string name="settings_npu_power_hint">Применится при следующей загрузке модели</string>
+    <string name="settings_engine_npu_unsupported">NPU (Hexagon) недоступен: на устройстве нет поддерживаемого Snapdragon</string>
 </resources>

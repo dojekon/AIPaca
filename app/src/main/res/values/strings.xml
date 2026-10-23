@@ -268,4 +268,5 @@
     <string name="settings_npu_power_balanced">Balanced</string>
     <string name="settings_npu_power_saver">Power saver</string>
     <string name="settings_npu_power_hint">Applied on the next model load</string>
+    <string name="settings_engine_npu_unsupported">NPU (Hexagon) is not available: this device has no supported Snapdragon SoC</string>
 </resources>

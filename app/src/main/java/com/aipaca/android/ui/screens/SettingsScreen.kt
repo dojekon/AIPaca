@@ -62,6 +62,8 @@ import com.aipaca.android.data.settings.LANGUAGE_RUSSIAN
 import com.aipaca.android.data.settings.LANGUAGE_SYSTEM
 import com.aipaca.android.data.settings.Settings
 import com.aipaca.android.data.settings.SettingsRepository
+import com.aipaca.android.data.device.DeviceInfo
+import com.aipaca.android.data.device.npuSupported
 import com.aipaca.android.engine.Accelerator
 import com.aipaca.android.engine.NpuPowerMode
 import com.aipaca.android.ui.applyLanguage
@@ -92,6 +94,7 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val copiedMessage = stringResource(R.string.settings_storage_copied)
     val modelsPath = remember(context) { File(context.filesDir, MODELS_DIR).absolutePath }
+    val npuAvailable = remember(context) { npuSupported(DeviceInfo.current(context)) }
 
     var urlText by remember(settings.profilesRepoUrl) { mutableStateOf(settings.profilesRepoUrl) }
     var urlFocused by remember { mutableStateOf(false) }
@@ -306,15 +309,19 @@ fun SettingsScreen(
                     scope.launch { settingsRepository.setAccelerator(Accelerator.GPU) }
                 },
             )
-            AcceleratorOption(
-                label = stringResource(R.string.settings_engine_npu),
-                selected = settings.accelerator == Accelerator.NPU,
-                onSelect = {
-                    scope.launch { settingsRepository.setAccelerator(Accelerator.NPU) }
-                },
-            )
+            if (npuAvailable || settings.accelerator == Accelerator.NPU) {
+                AcceleratorOption(
+                    label = stringResource(R.string.settings_engine_npu),
+                    selected = settings.accelerator == Accelerator.NPU,
+                    onSelect = {
+                        scope.launch { settingsRepository.setAccelerator(Accelerator.NPU) }
+                    },
+                )
+            }
             Text(
-                text = stringResource(R.string.settings_engine_npu_hint),
+                text = stringResource(
+                    if (npuAvailable) R.string.settings_engine_npu_hint else R.string.settings_engine_npu_unsupported,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

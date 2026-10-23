@@ -20,6 +20,9 @@ val htpBySoc = mapOf(
     "sm8850" to 81,
 )
 
+fun npuSupported(device: DeviceDescriptor): Boolean =
+    device.vendor == "qcom" && device.htpVersion != null
+
 fun normalizeSoc(raw: String?): String = raw?.trim()?.lowercase().orEmpty()
 
 fun vendorKey(raw: String?): String {
