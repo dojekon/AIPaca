@@ -42,9 +42,10 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     cursor: String = "",
 ) {
-    val blocks = remember(markdown, cursor) {
-        parseMarkdown(markdown).withTrailingCursor(cursor)
-    }
+    val split = remember(markdown) { splitStableMarkdown(markdown) }
+    val stableBlocks = remember(split.stable) { parseMarkdown(split.stable) }
+    val tailBlocks = remember(split.tail, cursor) { parseMarkdown(split.tail).withTrailingCursor(cursor) }
+    val blocks = remember(stableBlocks, tailBlocks) { stableBlocks + tailBlocks }
     if (blocks.isEmpty()) return
     Column(
         modifier = modifier,

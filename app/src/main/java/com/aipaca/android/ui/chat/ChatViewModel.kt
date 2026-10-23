@@ -433,9 +433,18 @@ class ChatViewModel(
         val reasoning = StringBuilder()
         var toolAssembler = ToolCallAssembler()
         var assistantSavedThisStep = false
+        val throttle = StreamThrottle()
+        fun publishAgentStream() {
+            _streamingText.value = text.toString()
+            _streamingReasoning.value = reasoning.toString()
+            _streamingToolCalls.value = toolAssembler.finish().map {
+                StreamingToolCallUi(it.index, it.name.orEmpty(), it.argumentsJson)
+            }
+        }
 
         val callbacks = object : AgentLoopCallbacks {
             override suspend fun onAssistantStart() {
+                throttle.reset()
                 text.clear()
                 reasoning.clear()
                 assistantSavedThisStep = false
@@ -446,20 +455,13 @@ class ChatViewModel(
             }
 
             override fun onTextDelta(textDelta: String, isReasoning: Boolean) {
-                if (isReasoning) {
-                    reasoning.append(textDelta)
-                    _streamingReasoning.value = reasoning.toString()
-                } else {
-                    text.append(textDelta)
-                    _streamingText.value = text.toString()
-                }
+                if (isReasoning) reasoning.append(textDelta) else text.append(textDelta)
+                if (throttle.ready()) publishAgentStream()
             }
 
             override fun onToolCallDelta(delta: ChatEvent.ToolCallDelta) {
                 toolAssembler.add(delta)
-                _streamingToolCalls.value = toolAssembler.finish().map {
-                    StreamingToolCallUi(it.index, it.name.orEmpty(), it.argumentsJson)
-                }
+                if (throttle.ready()) publishAgentStream()
             }
 
             override fun onStep(step: Int, maxIterations: Int) {
@@ -580,6 +582,7 @@ class ChatViewModel(
         val assistant = placeholder.copy(id = messageDao.insert(placeholder))
         val accumulated = StringBuilder()
         val reasoning = StringBuilder()
+        val throttle = StreamThrottle()
         _lastTimings.value = null
         _streamingMessageId.value = assistant.id
         _streamingText.value = ""
@@ -616,14 +619,14 @@ class ChatViewModel(
                 val scaledBudget = (budget * budgetScale).toInt().coerceAtLeast(MIN_CONTEXT_BUDGET)
                 val request = baseRequest.copy(messages = trimWithHysteresis(history, scaledBudget).messages)
                 result = chatClient.stream(serverUrl, apiKey, request) { delta, isReasoning ->
-                    if (isReasoning) {
-                        reasoning.append(delta)
+                    if (isReasoning) reasoning.append(delta) else accumulated.append(delta)
+                    if (throttle.ready()) {
                         _streamingReasoning.value = reasoning.toString()
-                    } else {
-                        accumulated.append(delta)
                         _streamingText.value = accumulated.toString()
                     }
                 }
+                _streamingReasoning.value = reasoning.toString()
+                _streamingText.value = accumulated.toString()
                 val overflow = parseContextOverflow(result.exceptionOrNull()?.message)
                 if (overflow == null || overflowRetries >= MAX_CONTEXT_OVERFLOW_RETRIES || accumulated.isNotEmpty()) break
                 budgetScale = shrunkBudgetScale(budgetScale, overflow)

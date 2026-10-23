@@ -301,4 +301,38 @@ class MarkdownModelTest {
         assertEquals(1, blocks.size)
         return (blocks[0] as MdBlock.Paragraph).lines
     }
+
+    @Test
+    fun stableSplitEndsAtLastBlankLineOutsideFence() {
+        val text = "# Title\n\nFirst paragraph.\n\n```kotlin\nval a = 1\n\nval b = 2\n```\n\nTail text"
+
+        val split = splitStableMarkdown(text)
+
+        assertEquals("Tail text", split.tail)
+        assertEquals(text, split.stable + split.tail)
+    }
+
+    @Test
+    fun blankLineInsideOpenFenceIsNotABoundary() {
+        val text = "Intro\n\n```\ncode\n\nmore code"
+
+        val split = splitStableMarkdown(text)
+
+        assertEquals("```\ncode\n\nmore code", split.tail)
+    }
+
+    @Test
+    fun splitParsingEqualsFullParsing() {
+        val samples = listOf(
+            "1. one\n2. two\n\n3. three\n\n- a\n- b\n\n> quote\n> more\n\nend",
+            "Para **bold**\nsecond line\n\n---\n\n## Head\n\n```\nx\n\ny\n```\n\n- item\n  continued",
+            "no blank lines at all",
+            "trailing blank\n\n",
+            "crlf\r\n\r\nnext",
+        )
+        for (text in samples) {
+            val split = splitStableMarkdown(text)
+            assertEquals(text, parseMarkdown(split.stable) + parseMarkdown(split.tail), parseMarkdown(text))
+        }
+    }
 }

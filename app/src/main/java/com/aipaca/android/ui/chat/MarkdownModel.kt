@@ -378,6 +378,31 @@ private val BULLET_REGEX = Regex("^[-*+][ \t]+(.*)$")
 private val ORDERED_REGEX = Regex("^(\\d{1,9})([.)])[ \t]+(.*)$")
 private val CLOSING_HASHES_REGEX = Regex("[ \t]+#+$")
 
+data class MarkdownSplit(val stable: String, val tail: String)
+
+fun splitStableMarkdown(text: String): MarkdownSplit {
+    val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
+    var fence: Fence? = null
+    var boundary = 0
+    var lineStart = 0
+    while (lineStart <= normalized.length) {
+        val end = normalized.indexOf('\n', lineStart).let { if (it < 0) normalized.length else it }
+        if (end == normalized.length) break
+        val raw = normalized.substring(lineStart, end)
+        val line = raw.trimStart()
+        val activeFence = fence
+        if (activeFence != null) {
+            if (isFenceClose(line, activeFence)) fence = null
+        } else if (line.isBlank()) {
+            boundary = end + 1
+        } else {
+            fenceOpening(line)?.let { fence = it }
+        }
+        lineStart = end + 1
+    }
+    return MarkdownSplit(normalized.substring(0, boundary), normalized.substring(boundary))
+}
+
 private fun headingLine(line: String): Pair<Int, String>? {
     val match = HEADING_REGEX.matchEntire(line) ?: return null
     val content = match.groupValues[2].trim()
