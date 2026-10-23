@@ -14,12 +14,18 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-private const val FETCH_MAX_CHARS = 64 * 1024
+const val FETCH_DEFAULT_PAGE_CHARS = 16 * 1024
+private const val FETCH_MAX_DOWNLOAD_BYTES = 2L * 1024 * 1024
 
-class FetchTool(private val client: OkHttpClient = defaultFetchClient()) : AgentTool {
+class FetchTool(
+    private val client: OkHttpClient = defaultFetchClient(),
+    private val pageChars: () -> Int = { FETCH_DEFAULT_PAGE_CHARS },
+) : AgentTool {
     override val name: String = "fetch"
 
-    override val description: String = "Fetch an HTTP or HTTPS URL and return the response text."
+    override val description: String =
+        "Fetch an HTTP or HTTPS URL. HTML is converted to plain text; long results are paged, " +
+            "pass offset to read the next page."
 
     override val parametersJsonSchema: String = FETCH_SCHEMA
 
@@ -41,6 +47,8 @@ class FetchTool(private val client: OkHttpClient = defaultFetchClient()) : Agent
 
             val headers = params.readHeaders().getOrElse { return errorResult(it.message) }
             val body = params.optionalString("body").getOrElse { return errorResult(it.message) }
+            val offset = params.optionalInt("offset").getOrElse { return errorResult(it.message) } ?: 0
+            if (offset < 0) return errorResult("offset must be >= 0")
 
             val builder = Request.Builder().url(url)
             headers.forEach { (key, value) -> builder.addHeader(key, value) }
@@ -55,23 +63,38 @@ class FetchTool(private val client: OkHttpClient = defaultFetchClient()) : Agent
                     val code = response.code
                     val message = response.message
                     val contentType = response.header("Content-Type") ?: "unknown"
-                    val rawBody = response.body?.string().orEmpty()
-                    val truncated = rawBody.length > FETCH_MAX_CHARS
-                    val bodyText = if (truncated) {
-                        rawBody.take(FETCH_MAX_CHARS) + "\n[truncated]"
-                    } else {
-                        rawBody
+                    val source = response.body?.source()
+                    source?.request(FETCH_MAX_DOWNLOAD_BYTES)
+                    val bytes = source?.buffer?.let { buffer ->
+                        buffer.readByteArray(minOf(buffer.size, FETCH_MAX_DOWNLOAD_BYTES))
+                    } ?: ByteArray(0)
+                    val rawBody = String(bytes, response.body?.contentType()?.charset() ?: Charsets.UTF_8)
+                    val html = looksLikeHtml(contentType, rawBody)
+                    val document = if (html) htmlToText(rawBody) else HtmlDocumentText(null, rawBody)
+                    val page = pageOf(document.text, offset, pageChars())
+                    val output = buildString {
+                        append("HTTP $code $message\nContent-Type: $contentType\n")
+                        document.title?.let { append("Title: $it\n") }
+                        append('\n')
+                        append(page.text)
+                        if (page.hasMore) {
+                            append(
+                                "\n\n[showing characters ${page.offset}-${page.end} of ${page.total}; " +
+                                    "call fetch with offset=${page.end} to read more]",
+                            )
+                        }
                     }
-                    val output = "HTTP $code $message\nContent-Type: $contentType\n\n$bodyText"
                     val status = if (code in 200..299) AgentToolStatus.OK else AgentToolStatus.ERROR
                     ToolResult(
                         status = status,
                         output = output,
-                        truncated = truncated,
+                        truncated = page.hasMore,
                         meta = buildMap {
                             put("code", code.toString())
                             put("contentType", contentType)
-                            if (truncated) put("truncated", "true")
+                            put("chars", page.total.toString())
+                            if (html) put("html", "true")
+                            if (page.hasMore) put("nextOffset", page.end.toString())
                         },
                     )
                 }
@@ -119,6 +142,10 @@ private val FETCH_SCHEMA = """
         "body": {
           "type": "string",
           "description": "Request body for POST; ignored for GET."
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Character offset of the page to return; defaults to 0."
         }
       },
       "required": ["url"]

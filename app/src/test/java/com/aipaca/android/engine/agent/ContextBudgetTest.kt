@@ -47,4 +47,12 @@ class ContextBudgetTest {
     fun toolsLargerThanContextClampsToMinimum() {
         assertEquals(MIN_CONTEXT_BUDGET, contextBudget(4096, 100_000))
     }
+
+    @Test
+    fun toolOutputLimitScalesWithBudgetWithinBounds() {
+        assertEquals(2864, toolOutputCharLimit(2728))
+        assertEquals(1024, toolOutputCharLimit(100))
+        assertEquals(TOOL_OUTPUT_MAX_CHARS, toolOutputCharLimit(100_000))
+        assertEquals(2564, fetchPageCharLimit(2864))
+    }
 }

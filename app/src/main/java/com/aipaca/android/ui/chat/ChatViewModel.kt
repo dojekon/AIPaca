@@ -27,6 +27,8 @@ import com.aipaca.android.engine.agent.ToolResult
 import com.aipaca.android.engine.agent.buildAgentSystemPrompt
 import com.aipaca.android.engine.agent.buildCompactionRequest
 import com.aipaca.android.engine.agent.contextBudget
+import com.aipaca.android.engine.agent.fetchPageCharLimit
+import com.aipaca.android.engine.agent.toolOutputCharLimit
 import com.aipaca.android.engine.agent.MAX_CONTEXT_OVERFLOW_RETRIES
 import com.aipaca.android.engine.agent.parseContextOverflow
 import com.aipaca.android.engine.agent.trimWithHysteresis
@@ -414,7 +416,9 @@ class ChatViewModel(
     private suspend fun runAgent(chatId: Long, serverUrl: String, turnStartedAt: Long) {
         val sandbox = agentSandboxRoot(application.filesDir)
         sandbox.mkdirs()
-        val tools = builtinTools(sandbox)
+        val nCtx = engineManager.contextSize ?: AGENT_FALLBACK_CONTEXT
+        val toolOutputChars = toolOutputCharLimit(contextBudget(nCtx, AGENT_TOOLS_RESERVE_CHARS))
+        val tools = builtinTools(sandbox, fetchPageChars = { fetchPageCharLimit(toolOutputChars) })
         val registry = AgentToolRegistry(tools)
         val systemPrompt = buildAgentSystemPrompt(tools)
         val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
@@ -425,7 +429,7 @@ class ChatViewModel(
         val toolsChars = registry.manifest.sumOf {
             it.parametersJsonSchema.length + it.description.length + it.name.length
         }
-        val budget = contextBudget(engineManager.contextSize ?: AGENT_FALLBACK_CONTEXT, toolsChars)
+        val budget = contextBudget(nCtx, toolsChars)
         var budgetScale = 1.0
         fun messagesBudget(): Int =
             ((budget * budgetScale).toInt() - estimateTokens(contextSummary.orEmpty()))
@@ -566,6 +570,7 @@ class ChatViewModel(
                     } else {
                         null
                     },
+                    toolOutputMaxChars = toolOutputChars,
                 ),
                 contextPreparer = contextPreparer,
                 contextSummary = { contextSummary },
@@ -792,6 +797,8 @@ class ChatViewModel(
         private const val SUBSCRIBE_TIMEOUT_MS = 5_000L
 
         private const val AGENT_FALLBACK_CONTEXT = 4096
+
+        private const val AGENT_TOOLS_RESERVE_CHARS = 2400
 
         private const val COMPACTION_TIMEOUT_SECONDS = 60L
 

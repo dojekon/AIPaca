@@ -116,4 +116,13 @@ class AgentReducersTest {
         assertEquals(0.7 * 0.85, shrunkBudgetScale(1.0, ContextOverflow(null, null)), 1e-9)
         assertEquals(0.1, shrunkBudgetScale(0.1, ContextOverflow(null, null)), 1e-9)
     }
+
+    @Test
+    fun toolResultIsCappedAndMarkedTruncated() {
+        val result = ToolResult(AgentToolStatus.OK, "x".repeat(50)).cappedTo(10)
+
+        assertEquals("x".repeat(10) + "\n[truncated]", result.output)
+        assertTrue(result.truncated)
+        assertEquals(ToolResult(AgentToolStatus.OK, "short"), ToolResult(AgentToolStatus.OK, "short").cappedTo(10))
+    }
 }

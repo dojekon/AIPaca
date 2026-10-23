@@ -17,9 +17,11 @@ fun agentSandboxRoot(filesDir: File): File = File(filesDir, "agent")
 fun builtinTools(
     workspace: AgentWorkspace,
     fetchClient: OkHttpClient = defaultFetchClient(),
-): List<AgentTool> = fileTools(workspace) + FetchTool(fetchClient)
+    fetchPageChars: () -> Int = { FETCH_DEFAULT_PAGE_CHARS },
+): List<AgentTool> = fileTools(workspace) + FetchTool(fetchClient, fetchPageChars)
 
 fun builtinTools(
     sandboxRoot: File,
     fetchClient: OkHttpClient = defaultFetchClient(),
-): List<AgentTool> = builtinTools(FileWorkspace(sandboxRoot), fetchClient)
+    fetchPageChars: () -> Int = { FETCH_DEFAULT_PAGE_CHARS },
+): List<AgentTool> = builtinTools(FileWorkspace(sandboxRoot), fetchClient, fetchPageChars)

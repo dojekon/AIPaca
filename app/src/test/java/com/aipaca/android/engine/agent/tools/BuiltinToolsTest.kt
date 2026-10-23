@@ -244,16 +244,45 @@ class BuiltinToolsTest {
     }
 
     @Test
-    fun fetchTruncatesLargeBodies() {
+    fun fetchPagesLargeBodiesWithOffsetHint() {
         withSandbox { root ->
             withHttpServer(::responderFor) { base, _ ->
-                val result = runBlocking { FetchTool().execute("""{"url":"$base/big"}""") }
+                val result = runBlocking { FetchTool(pageChars = { 1000 }).execute("""{"url":"$base/big"}""") }
 
                 assertEquals(AgentToolStatus.OK, result.status)
-                assertEquals("true", result.meta["truncated"])
-                assertTrue(result.output.endsWith("\n[truncated]"))
-                val body = result.output.substringAfter("\n\n")
-                assertEquals(64 * 1024 + "\n[truncated]".length, body.length)
+                assertTrue(result.truncated)
+                assertEquals("1000", result.meta["nextOffset"])
+                assertTrue(result.output.contains("x".repeat(1000) + "\n\n[showing characters 0-1000 of 70000"))
+                assertTrue(result.output.endsWith("call fetch with offset=1000 to read more]"))
+            }
+        }
+    }
+
+    @Test
+    fun fetchOffsetReturnsLaterPageAndLastPageHasNoHint() {
+        withSandbox { root ->
+            withHttpServer(::responderFor) { base, _ ->
+                val result = runBlocking {
+                    FetchTool(pageChars = { 1000 }).execute("""{"url":"$base/big","offset":69500}""")
+                }
+
+                assertEquals(null, result.meta["nextOffset"])
+                assertTrue(result.output.endsWith("\n\n" + "x".repeat(500)))
+            }
+        }
+    }
+
+    @Test
+    fun fetchConvertsHtmlToText() {
+        withSandbox { root ->
+            withHttpServer(::responderFor) { base, _ ->
+                val result = runBlocking { FetchTool().execute("""{"url":"$base/page"}""") }
+
+                assertEquals("true", result.meta["html"])
+                assertTrue(result.output.contains("Title: Example & Co"))
+                assertTrue(result.output.contains("# Heading"))
+                assertTrue(result.output.contains("- first"))
+                assertTrue(!result.output.contains("<p>") && !result.output.contains("tracking()"))
             }
         }
     }
@@ -288,6 +317,13 @@ class BuiltinToolsTest {
                 Response("HTTP/1.1 500 Internal Server Error", mapOf("Content-Type" to "text/plain"), "boom")
             path.startsWith("/big") ->
                 Response("HTTP/1.1 200 OK", mapOf("Content-Type" to "text/plain"), "x".repeat(70_000))
+            path.startsWith("/page") ->
+                Response(
+                    "HTTP/1.1 200 OK",
+                    mapOf("Content-Type" to "text/html; charset=utf-8"),
+                    "<html><head><title>Example &amp; Co</title><script>tracking()</script></head>" +
+                        "<body><h1>Heading</h1><p>Body text</p><ul><li>first</li><li>second</li></ul></body></html>",
+                )
             path.startsWith("/echo") ->
                 Response(
                     "HTTP/1.1 200 OK",

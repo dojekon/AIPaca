@@ -21,6 +21,7 @@ data class AgentLoopConfig(
     val repeatPenalty: Double = 1.1,
     val reasoningBudget: Int? = null,
     val reasoningBudgetMessage: String? = null,
+    val toolOutputMaxChars: Int = TOOL_OUTPUT_MAX_CHARS,
 )
 
 sealed interface AgentLoopOutcome {
@@ -136,7 +137,7 @@ class AgentLoop(
                         withContext(Dispatchers.IO) {
                             registry.execute(call.name, call.argsJson)
                         }
-                    }
+                    }.cappedTo(config.toolOutputMaxChars)
                     executedSignatures += signature
                     callbacks.onToolFinished(call, toolResult)
                     working += toolApiMessage(call, toolResult)

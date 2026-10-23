@@ -82,3 +82,8 @@ fun shrunkBudgetScale(current: Double, overflow: ContextOverflow): Double {
 private const val FALLBACK_SHRINK = 0.7
 private const val SHRINK_MARGIN = 0.85
 private const val MIN_BUDGET_SCALE = 0.1
+
+fun ToolResult.cappedTo(maxChars: Int): ToolResult {
+    val capped = capToolOutput(output, maxChars.coerceAtLeast(1))
+    return if (capped == output) this else copy(output = capped, truncated = true)
+}
