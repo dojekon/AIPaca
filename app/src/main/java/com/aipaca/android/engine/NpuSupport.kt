@@ -1,6 +1,7 @@
 package com.aipaca.android.engine
 
 import android.content.Context
+import android.os.Build
 import java.io.File
 import java.io.IOException
 
@@ -19,6 +20,7 @@ object NpuSupport {
     const val LIB_VMMEM = "libvmmem.so"
 
     private const val STAGE_DIR_NAME = "npu-libs"
+    private const val STAMP_FILE = ".fingerprint"
     private const val VENDOR_DIR = "/vendor/lib64"
     private const val DSP_CLIENT_PREFIX = "vendor.qti.hardware.dsp"
     private const val LEGACY_VENDOR_DIR = "/vendor/lib64"
@@ -37,23 +39,36 @@ object NpuSupport {
     fun stage(context: Context): NpuStageResult =
         NpuStageResult(
             dir = File(context.filesDir, STAGE_DIR_NAME),
-            staged = stageLibs(File(VENDOR_DIR), File(context.filesDir, STAGE_DIR_NAME)),
+            staged = stageLibs(File(VENDOR_DIR), File(context.filesDir, STAGE_DIR_NAME), Build.FINGERPRINT.orEmpty()),
         )
 
-    fun stageLibs(vendorDir: File, stageDir: File): List<String> {
+    fun stageLibs(vendorDir: File, stageDir: File, fingerprint: String = ""): List<String> {
         if (!stageDir.isDirectory && !stageDir.mkdirs()) return emptyList()
+        val stamp = File(stageDir, STAMP_FILE)
+        val sameBuild = stamp.isFile && stamp.readText() == fingerprint
         val staged = mutableListOf<String>()
+        var copyFailed = false
         for (name in fastrpcCandidates(vendorDir.list().orEmpty().toList())) {
             val source = File(vendorDir, name)
             if (!source.isFile) continue
             val target = File(stageDir, name)
-            staged += if (target.isFile && target.length() == source.length()) {
-                name
+            val upToDate = sameBuild && target.isFile && target.length() == source.length()
+            if (upToDate || copy(source, target)) {
+                staged += name
             } else {
-                if (copy(source, target)) name else continue
+                copyFailed = true
             }
         }
+        if (!copyFailed) writeStamp(stamp, fingerprint)
         return staged
+    }
+
+    private fun writeStamp(stamp: File, fingerprint: String) {
+        try {
+            stamp.writeText(fingerprint)
+        } catch (_: IOException) {
+            stamp.delete()
+        }
     }
 
     private fun copy(source: File, target: File): Boolean = try {

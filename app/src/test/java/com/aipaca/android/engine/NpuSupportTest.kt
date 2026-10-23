@@ -139,4 +139,31 @@ class NpuSupportTest {
             NpuStageResult(dir = File("/tmp"), staged = listOf(NpuSupport.LIB_OPEN_CL)).fastrpcReady,
         )
     }
+
+    @Test
+    fun sameSizeFileIsRecopiedAfterSystemUpdate() {
+        val vendor = tmp.newFolder("vendor4")
+        val stage = tmp.newFolder("stage4")
+        File(vendor, "libcdsprpc.so").writeText("build-A")
+        NpuSupport.stageLibs(vendor, stage, fingerprint = "A")
+        File(vendor, "libcdsprpc.so").writeText("build-B")
+
+        NpuSupport.stageLibs(vendor, stage, fingerprint = "A")
+        assertEquals("build-A", File(stage, "libcdsprpc.so").readText())
+
+        NpuSupport.stageLibs(vendor, stage, fingerprint = "B")
+        assertEquals("build-B", File(stage, "libcdsprpc.so").readText())
+        assertEquals("B", File(stage, ".fingerprint").readText())
+    }
+
+    @Test
+    fun stampIsWrittenOnFirstStage() {
+        val vendor = tmp.newFolder("vendor5")
+        val stage = tmp.newFolder("stage5")
+        File(vendor, "libOpenCL.so").writeText("cl")
+
+        NpuSupport.stageLibs(vendor, stage, fingerprint = "fp")
+
+        assertEquals("fp", File(stage, ".fingerprint").readText())
+    }
 }

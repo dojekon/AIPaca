@@ -76,7 +76,10 @@ required before completing any task.
 
 - **Engine**: do not set `-Wl,-rpath,$ORIGIN` (breaks linking; no rpath is fine);
   do not strip htp libraries (`libggml-htp-v73/75/79/81.so`) — `keepDebugSymbols` in build.gradle.kts;
-  the app sets `LD_LIBRARY_PATH`: `nativeLibraryDir:/vendor/lib64:/system/lib64`.
+  the app sets `LD_LIBRARY_PATH`: `nativeLibraryDir:filesDir/npu-libs` when FastRPC libs are staged
+  (fallback `nativeLibraryDir:/vendor/lib64:/system/lib64` only if staging found nothing); staging is needed for
+  every backend — `libggml-opencl.so` links `libOpenCL.so` directly; staged copies are refreshed when
+  `Build.FINGERPRINT` changes (`.fingerprint` stamp).
 - **HF API**: `?blobs=true` returns `size`/`lfs` inside `siblings` (the `blobs` array may be absent);
   the parser must read both variants. `gated`: `true/false/auto/manual`.
 - **Resume**: source of truth — `download_parts.downloadedBytes` (Room v4) + `resumableBytes()`;
