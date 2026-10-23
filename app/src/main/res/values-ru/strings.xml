@@ -276,4 +276,17 @@
     <string name="agent_notification_channel">Агент</string>
     <string name="agent_notification_done">Агент завершил задачу</string>
     <string name="agent_notification_failed">Агент остановился с ошибкой</string>
+    <string name="menu_workspace">Файлы агента</string>
+    <string name="workspace_empty">Папка пуста</string>
+    <string name="workspace_import">Импорт</string>
+    <string name="workspace_export">Экспорт</string>
+    <string name="workspace_up">Наверх</string>
+    <string name="workspace_close">Закрыть</string>
+    <string name="workspace_delete">Удалить</string>
+    <string name="workspace_delete_title">Удалить %1$s?</string>
+    <string name="workspace_binary">Двоичный файл: просмотр текста недоступен</string>
+    <string name="workspace_truncated">Показаны первые 256 КБ</string>
+    <string name="workspace_imported">Импортировано: %1$s</string>
+    <string name="workspace_exported">Экспортировано</string>
+    <string name="workspace_error">Ошибка: %1$s</string>
 </resources>

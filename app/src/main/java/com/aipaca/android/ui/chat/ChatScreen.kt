@@ -101,6 +101,7 @@ fun ChatScreen(
     viewModel: ChatViewModel,
     modifier: Modifier = Modifier,
     onChatDeleted: () -> Unit = {},
+    onOpenWorkspace: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val clipboard = remember(context) { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
@@ -288,6 +289,13 @@ fun ChatScreen(
                                 },
                             )
                             if (mode == ChatMode.AGENT) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.menu_workspace)) },
+                                    onClick = {
+                                        overflowOpen = false
+                                        onOpenWorkspace()
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = {
                                         Text(

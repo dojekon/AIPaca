@@ -73,6 +73,7 @@ import com.aipaca.android.ui.screens.DownloadsMenu
 import com.aipaca.android.ui.screens.ServerScreen
 import com.aipaca.android.ui.screens.SettingsScreen
 import com.aipaca.android.ui.search.SearchScreen
+import com.aipaca.android.ui.workspace.WorkspaceScreen
 import kotlinx.coroutines.launch
 
 private const val DRAWER_CHATS_LIMIT = 20
@@ -324,6 +325,7 @@ fun AppRoot(container: AppContainer) {
                     ChatScreen(
                         onOpenDrawer = { scope.launch { drawerState.open() } },
                         onChatDeleted = { goToNewChat() },
+                        onOpenWorkspace = { openSubPage(Destinations.Workspace) },
                         viewModel = viewModel(
                             key = "chat-${drawerMode}",
                             factory = ChatViewModel.factory(0L, drawerMode),
@@ -344,6 +346,7 @@ fun AppRoot(container: AppContainer) {
                     ChatScreen(
                         onOpenDrawer = { scope.launch { drawerState.open() } },
                         onChatDeleted = { goToNewChat() },
+                        onOpenWorkspace = { openSubPage(Destinations.Workspace) },
                         viewModel = viewModel(
                             key = if (newChat) "chat-$drawerMode" else "chat-$chatId",
                             factory = ChatViewModel.factory(
@@ -367,6 +370,7 @@ fun AppRoot(container: AppContainer) {
                     )
                 }
                 composable(Destinations.About.route) { AboutScreen() }
+                composable(Destinations.Workspace.route) { WorkspaceScreen() }
             }
         }
     }

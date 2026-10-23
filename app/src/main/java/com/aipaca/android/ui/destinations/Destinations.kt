@@ -19,6 +19,8 @@ sealed class Destinations(val route: String, @param:StringRes val labelRes: Int)
 
     data object About : Destinations("about", R.string.menu_about)
 
+    data object Workspace : Destinations("workspace", R.string.menu_workspace)
+
     companion object {
 
         const val CHAT_ID_ARG = "chatId"
@@ -32,9 +34,9 @@ sealed class Destinations(val route: String, @param:StringRes val labelRes: Int)
             listOf(Models, Settings)
 
         val subPages: List<Destinations> =
-            listOf(Search, Server, Bench, About)
+            listOf(Search, Server, Bench, About, Workspace)
 
         val all: List<Destinations> =
-            listOf(Chat, Models, Search, Server, Bench, Settings, About)
+            listOf(Chat, Models, Search, Server, Bench, Settings, About, Workspace)
     }
 }

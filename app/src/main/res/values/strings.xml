@@ -276,4 +276,17 @@
     <string name="agent_notification_channel">Agent</string>
     <string name="agent_notification_done">Agent finished the task</string>
     <string name="agent_notification_failed">Agent stopped with an error</string>
+    <string name="menu_workspace">Agent files</string>
+    <string name="workspace_empty">The folder is empty</string>
+    <string name="workspace_import">Import</string>
+    <string name="workspace_export">Export</string>
+    <string name="workspace_up">Up</string>
+    <string name="workspace_close">Close</string>
+    <string name="workspace_delete">Delete</string>
+    <string name="workspace_delete_title">Delete %1$s?</string>
+    <string name="workspace_binary">Binary file: no text preview</string>
+    <string name="workspace_truncated">Preview shows the first 256 KB</string>
+    <string name="workspace_imported">Imported: %1$s</string>
+    <string name="workspace_exported">Exported</string>
+    <string name="workspace_error">Error: %1$s</string>
 </resources>
