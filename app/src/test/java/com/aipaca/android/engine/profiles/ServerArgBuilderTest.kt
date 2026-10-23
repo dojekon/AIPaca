@@ -21,6 +21,7 @@ class ServerArgBuilderTest {
         assertTrue(args.hasPair("--flash-attn", "on"))
         assertTrue(args.hasPair("-ctk", "q8_0"))
         assertTrue(args.contains("--jinja"))
+        assertTrue(args.hasPair("--cache-reuse", "256"))
     }
 
     @Test

@@ -27,6 +27,9 @@ import com.aipaca.android.engine.agent.ToolResult
 import com.aipaca.android.engine.agent.buildAgentSystemPrompt
 import com.aipaca.android.engine.agent.buildCompactionRequest
 import com.aipaca.android.engine.agent.contextBudget
+import com.aipaca.android.engine.agent.MAX_CONTEXT_OVERFLOW_RETRIES
+import com.aipaca.android.engine.agent.parseContextOverflow
+import com.aipaca.android.engine.agent.trimWithHysteresis
 import com.aipaca.android.engine.agent.shrunkBudgetScale
 import com.aipaca.android.engine.agent.MIN_CONTEXT_BUDGET
 import com.aipaca.android.engine.agent.estimateTokens
@@ -42,11 +45,11 @@ import com.aipaca.android.engine.agent.tools.AgentToolRegistry
 import com.aipaca.android.engine.agent.tools.agentSandboxRoot
 import com.aipaca.android.engine.agent.tools.builtinTools
 import com.aipaca.android.engine.agent.toApiMessages
-import com.aipaca.android.engine.agent.trimHistory
 import com.aipaca.android.engine.chat.ApiMessage
 import com.aipaca.android.engine.chat.ChatClient
 import com.aipaca.android.engine.chat.ChatEvent
 import com.aipaca.android.engine.chat.ChatRequest
+import com.aipaca.android.engine.chat.ChatStreamResult
 import com.aipaca.android.engine.chat.ChatTimings
 import com.aipaca.android.engine.chat.ToolCallAssembler
 import kotlinx.coroutines.CancellationException
@@ -394,7 +397,7 @@ class ChatViewModel(
             ((budget * budgetScale).toInt() - estimateTokens(contextSummary.orEmpty()))
                 .coerceAtLeast(MIN_CONTEXT_BUDGET)
         val contextPreparer: suspend (List<ApiMessage>) -> List<ApiMessage> = preparer@ { messages ->
-            val trimmed = trimHistory(messages, messagesBudget())
+            val trimmed = trimWithHysteresis(messages, messagesBudget())
             if (trimmed.estimatedTokens <= messagesBudget() ||
                 !shouldCompact(trimmed.estimatedTokens, messagesBudget(), trimmed.messages.size)
             ) {
@@ -420,7 +423,7 @@ class ChatViewModel(
                 chatDao.updateTimestamp(chatId, System.currentTimeMillis())
                 contextSummary = summary
                 Log.i(TAG, "Context compacted: ${split.older.size} messages -> summary")
-                trimHistory(split.activeTurn, messagesBudget()).messages
+                trimWithHysteresis(split.activeTurn, messagesBudget()).messages
             } finally {
                 _compacting.value = false
             }
@@ -582,11 +585,17 @@ class ChatViewModel(
         _streamingText.value = ""
         _streamingReasoning.value = ""
         try {
-            val request = ChatRequest(
-                messages = messageDao.getForChat(chatId)
-                    .filter { it.id != assistant.id }
-                    .map { ApiMessage(role = it.role, content = it.content) },
-                systemPrompt = _systemPrompt.value.trim().ifEmpty { null },
+            val history = messageDao.getForChat(chatId)
+                .filter { it.id != assistant.id }
+                .map { ApiMessage(role = it.role, content = it.content) }
+            val systemPrompt = _systemPrompt.value.trim().ifEmpty { null }
+            val budget = contextBudget(
+                engineManager.contextSize ?: AGENT_FALLBACK_CONTEXT,
+                systemPrompt?.length ?: 0,
+            )
+            val baseRequest = ChatRequest(
+                messages = history,
+                systemPrompt = systemPrompt,
                 temperature = _params.value.temperature,
                 topP = _params.value.topP,
                 topK = _params.value.topK,
@@ -600,14 +609,26 @@ class ChatViewModel(
                 },
             )
             val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
-            val result = chatClient.stream(serverUrl, apiKey, request) { delta, isReasoning ->
-                if (isReasoning) {
-                    reasoning.append(delta)
-                    _streamingReasoning.value = reasoning.toString()
-                } else {
-                    accumulated.append(delta)
-                    _streamingText.value = accumulated.toString()
+            var budgetScale = 1.0
+            var overflowRetries = 0
+            var result: Result<ChatStreamResult>
+            while (true) {
+                val scaledBudget = (budget * budgetScale).toInt().coerceAtLeast(MIN_CONTEXT_BUDGET)
+                val request = baseRequest.copy(messages = trimWithHysteresis(history, scaledBudget).messages)
+                result = chatClient.stream(serverUrl, apiKey, request) { delta, isReasoning ->
+                    if (isReasoning) {
+                        reasoning.append(delta)
+                        _streamingReasoning.value = reasoning.toString()
+                    } else {
+                        accumulated.append(delta)
+                        _streamingText.value = accumulated.toString()
+                    }
                 }
+                val overflow = parseContextOverflow(result.exceptionOrNull()?.message)
+                if (overflow == null || overflowRetries >= MAX_CONTEXT_OVERFLOW_RETRIES || accumulated.isNotEmpty()) break
+                budgetScale = shrunkBudgetScale(budgetScale, overflow)
+                overflowRetries++
+                Log.i(TAG, "Chat context overflow $overflow; budget scale -> $budgetScale")
             }
             result.fold(
                 onSuccess = { streamed ->

@@ -3,6 +3,7 @@ package com.aipaca.android.engine.agent
 import com.aipaca.android.engine.chat.ApiMessage
 
 const val DROPPED_CONTEXT_MARKER = "[dropped from context]"
+const val TRIM_TARGET_RATIO = 0.7
 
 private const val MESSAGE_OVERHEAD_TOKENS = 16
 
@@ -99,4 +100,18 @@ fun trimHistory(
         estimatedTokens = result.sumOf { estimateMessageTokens(it) },
         trimmed = result != messages,
     )
+}
+
+fun trimWithHysteresis(
+    messages: List<ApiMessage>,
+    budgetTokens: Int,
+    keepLastExchanges: Int = 3,
+    targetRatio: Double = TRIM_TARGET_RATIO,
+): TrimResult {
+    val total = messages.sumOf { estimateMessageTokens(it) }
+    if (total <= budgetTokens) {
+        return TrimResult(messages, droppedToolResults = 0, droppedMessages = 0, estimatedTokens = total, trimmed = false)
+    }
+    val target = (budgetTokens * targetRatio).toInt().coerceAtLeast(1)
+    return trimHistory(messages, target, keepLastExchanges)
 }

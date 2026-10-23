@@ -226,4 +226,30 @@ class HistoryTrimTest {
         ApiMessage(role = "tool", content = content, toolCallId = toolCallId)
 
     private fun call(id: String) = ApiToolCall(id = id, name = "test", argumentsJson = "{}")
+
+    @Test
+    fun hysteresisKeepsHistoryUntouchedWithinBudget() {
+        val messages = listOf(ApiMessage("user", "a".repeat(400)), ApiMessage("assistant", "b".repeat(400)))
+        val total = messages.sumOf { estimateMessageTokens(it) }
+
+        val result = trimWithHysteresis(messages, total)
+
+        assertEquals(messages, result.messages)
+        assertFalse(result.trimmed)
+    }
+
+    @Test
+    fun hysteresisTrimsBelowTargetSoNextTurnsOnlyAppend() {
+        val messages = (1..12).flatMap { turn ->
+            listOf(ApiMessage("user", "question $turn " + "q".repeat(400)), ApiMessage("assistant", "a".repeat(400)))
+        }
+        val budget = messages.sumOf { estimateMessageTokens(it) } - 50
+
+        val result = trimWithHysteresis(messages, budget)
+
+        assertTrue(result.trimmed)
+        assertTrue(result.estimatedTokens <= (budget * TRIM_TARGET_RATIO).toInt())
+        val next = result.messages + ApiMessage("user", "q".repeat(400)) + ApiMessage("assistant", "a".repeat(400))
+        assertFalse(trimWithHysteresis(next, budget).trimmed)
+    }
 }

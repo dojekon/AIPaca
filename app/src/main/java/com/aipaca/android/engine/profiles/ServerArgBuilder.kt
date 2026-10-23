@@ -3,6 +3,7 @@ package com.aipaca.android.engine.profiles
 object ServerArgBuilder {
 
     private const val ENV_KEY_PREFIX = "GGML_HEXAGON_"
+    private const val CACHE_REUSE_CHUNK = 256
 
     private val FLAG_REGEX = Regex("""^--[a-z0-9][a-z0-9-]*$""")
     private val VALUE_REGEX = Regex("""^[A-Za-z0-9._:+,=-]+$""")
@@ -19,6 +20,7 @@ object ServerArgBuilder {
             "-b", doc.launch.batchSize.toString(),
             "-ub", doc.launch.ubatchSize.toString(),
             "--jinja",
+            "--cache-reuse", CACHE_REUSE_CHUNK.toString(),
         )
         doc.launch.cpuMask?.let { args += listOf("-C", it) }
         if (doc.launch.flashAttn) args += listOf("--flash-attn", "on")
