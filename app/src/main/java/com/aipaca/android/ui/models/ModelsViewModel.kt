@@ -3,6 +3,7 @@ package com.aipaca.android.ui.models
 import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
+import android.os.PowerManager
 import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -31,6 +32,9 @@ import com.aipaca.android.engine.EngineService
 import com.aipaca.android.engine.EngineState
 import com.aipaca.android.engine.LaunchTarget
 import com.aipaca.android.engine.NpuPowerMode
+import com.aipaca.android.engine.ThermalLevel
+import com.aipaca.android.engine.thermalLevelFor
+import com.aipaca.android.engine.thermalPowerMode
 import com.aipaca.android.engine.formatGigabytes
 import com.aipaca.android.engine.profiles.ProfileCatalog
 import com.aipaca.android.engine.profiles.ProfileCatalogLoader
@@ -226,7 +230,12 @@ class ModelsViewModel(
             }
             EngineService.start(appContext)
             val settings = container.settingsRepository.settings.first()
-            val launchDoc = LaunchTarget.apply(doc, accel, device.htpVersion, _npuPowerMode.value).withContextSize(entity.nCtx)
+            val powerMode = if (accel == Accelerator.NPU) {
+                thermalPowerMode(_npuPowerMode.value, currentThermalLevel())
+            } else {
+                _npuPowerMode.value
+            }
+            val launchDoc = LaunchTarget.apply(doc, accel, device.htpVersion, powerMode).withContextSize(entity.nCtx)
             val result = withContext(Dispatchers.IO) {
                 engineManager.load(
                     entity.path,
@@ -237,7 +246,16 @@ class ModelsViewModel(
                 )
             }
             if (result.isSuccess) {
-                _actionState.value = ActionState.Idle
+                _actionState.value = if (powerMode != _npuPowerMode.value) {
+                    ActionState.Error(
+                        appContext.getString(
+                            if (powerMode == NpuPowerMode.POWER_SAVER) R.string.models_thermal_power_saver
+                            else R.string.models_thermal_balanced,
+                        ),
+                    )
+                } else {
+                    ActionState.Idle
+                }
                 return@launch
             }
             if (accel == Accelerator.CPU) {
@@ -332,6 +350,11 @@ class ModelsViewModel(
             contextSize = nCtx ?: profileContext,
             contextCustom = nCtx != null,
         )
+    }
+
+    private fun currentThermalLevel(): ThermalLevel {
+        val manager = appContext.getSystemService(PowerManager::class.java) ?: return ThermalLevel.NONE
+        return thermalLevelFor(manager.currentThermalStatus)
     }
 
     private fun ramErrorMessage(entity: ModelEntity, launch: LaunchDoc): String? {

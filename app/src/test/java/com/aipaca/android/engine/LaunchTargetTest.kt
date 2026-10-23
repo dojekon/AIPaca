@@ -162,3 +162,20 @@ class LaunchTargetTest {
         launch = LaunchDoc(nGpuLayers = 99),
     )
 }
+
+class ThermalPowerModeTest {
+
+    @Test
+    fun severeHeatDowngradesToBalanced() {
+        assertEquals(NpuPowerMode.BALANCED, thermalPowerMode(NpuPowerMode.PROFILE, ThermalLevel.SEVERE))
+        assertEquals(NpuPowerMode.BALANCED, thermalPowerMode(NpuPowerMode.BURST, ThermalLevel.SEVERE))
+        assertEquals(NpuPowerMode.POWER_SAVER, thermalPowerMode(NpuPowerMode.POWER_SAVER, ThermalLevel.SEVERE))
+    }
+
+    @Test
+    fun criticalHeatForcesPowerSaverAndCoolKeepsSelection() {
+        assertEquals(NpuPowerMode.POWER_SAVER, thermalPowerMode(NpuPowerMode.SUSTAINED, ThermalLevel.CRITICAL))
+        assertEquals(NpuPowerMode.SUSTAINED, thermalPowerMode(NpuPowerMode.SUSTAINED, ThermalLevel.MODERATE))
+        assertEquals(NpuPowerMode.PROFILE, thermalPowerMode(NpuPowerMode.PROFILE, ThermalLevel.NONE))
+    }
+}

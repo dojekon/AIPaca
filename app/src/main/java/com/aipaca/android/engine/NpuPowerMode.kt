@@ -16,3 +16,9 @@ enum class NpuPowerMode(val storageKey: String, val envValue: String?) {
             entries.firstOrNull { it.storageKey.equals(key, ignoreCase = true) } ?: DEFAULT
     }
 }
+
+fun thermalPowerMode(selected: NpuPowerMode, level: ThermalLevel): NpuPowerMode = when (level) {
+    ThermalLevel.CRITICAL -> NpuPowerMode.POWER_SAVER
+    ThermalLevel.SEVERE -> if (selected == NpuPowerMode.POWER_SAVER) selected else NpuPowerMode.BALANCED
+    else -> selected
+}
