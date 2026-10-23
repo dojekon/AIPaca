@@ -269,4 +269,6 @@
     <string name="settings_npu_power_saver">Power saver</string>
     <string name="settings_npu_power_hint">Applied on the next model load</string>
     <string name="settings_engine_npu_unsupported">NPU (Hexagon) is not available: this device has no supported Snapdragon SoC</string>
+    <string name="engine_error_exit_killed">The system stopped llama-server (code %1$d, SIGKILL), usually because memory ran out. Reduce the context size or pick a smaller model or quant.</string>
+    <string name="engine_error_exit_crashed">llama-server crashed (signal %1$d). Try another accelerator or model; the log is below.</string>
 </resources>

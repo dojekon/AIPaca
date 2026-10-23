@@ -269,4 +269,6 @@
     <string name="settings_npu_power_saver">Экономия</string>
     <string name="settings_npu_power_hint">Применится при следующей загрузке модели</string>
     <string name="settings_engine_npu_unsupported">NPU (Hexagon) недоступен: на устройстве нет поддерживаемого Snapdragon</string>
+    <string name="engine_error_exit_killed">Система остановила llama-server (код %1$d, SIGKILL) — обычно из-за нехватки памяти. Уменьшите контекст или выберите модель/квант меньше.</string>
+    <string name="engine_error_exit_crashed">llama-server аварийно завершился (сигнал %1$d). Попробуйте другой ускоритель или модель; лог ниже.</string>
 </resources>

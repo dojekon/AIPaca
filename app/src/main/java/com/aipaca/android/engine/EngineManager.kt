@@ -130,7 +130,7 @@ class EngineManager(context: Context) {
                 started.destroyForcibly()
                 joinReader(reader)
                 val reason = if (exited.get()) {
-                    appContext.getString(R.string.engine_error_exit, exitCode.get())
+                    exitMessage(exitCode.get())
                 } else {
                     appContext.getString(R.string.engine_error_health_timeout, (HEALTH_TIMEOUT_MS / 1000L).toInt())
                 }
@@ -276,6 +276,12 @@ class EngineManager(context: Context) {
         return reader
     }
 
+    private fun exitMessage(code: Int): String = when (classifyEngineExit(code)) {
+        EngineExitKind.KILLED -> appContext.getString(R.string.engine_error_exit_killed, code)
+        EngineExitKind.CRASHED -> appContext.getString(R.string.engine_error_exit_crashed, exitSignal(code) ?: code)
+        EngineExitKind.EXITED -> appContext.getString(R.string.engine_error_exit, code)
+    }
+
     private fun startExitWatcher(
         started: Process,
         token: Long,
@@ -292,7 +298,7 @@ class EngineManager(context: Context) {
             exited.set(true)
             publish(token) {
                 if (process === started) {
-                    _state.value = EngineState.Error(appContext.getString(R.string.engine_error_exit, code))
+                    _state.value = EngineState.Error(exitMessage(code))
                 }
             }
         }, THREAD_EXIT_WATCHER)
