@@ -114,6 +114,7 @@ class AgentLoop(
                 )
             }
             callbacks.onAssistantSaved(result.content, calls, result.timings)
+            val assistantIndex = working.size
             working += assistantApiMessage(result.content, calls)
             if (calls.isEmpty()) return AgentLoopOutcome.Completed(iteration + 1)
             if (!shouldContinue(calls, iteration + 1, config.maxIterations)) {
@@ -155,6 +156,7 @@ class AgentLoop(
                 }
                 throw e
             }
+            working[assistantIndex] = compactExecutedCalls(working[assistantIndex])
             iteration++
         }
         return AgentLoopOutcome.LimitReached(iteration)

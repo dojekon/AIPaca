@@ -41,7 +41,7 @@ class AgentMessagesTest {
     }
 
     @Test
-    fun mapsAssistantToolCallsExactly() {
+    fun mapsAssistantToolCallsWithCompactedWriteContent() {
         val raw = encodeToolCalls(
             listOf(
                 AgentToolCall("call_1", "read", """{"path":"a.txt"}"""),
@@ -58,7 +58,7 @@ class AgentMessagesTest {
         assertEquals(
             listOf(
                 ApiToolCall("call_1", "read", """{"path":"a.txt"}"""),
-                ApiToolCall("call_2", "write", """{"path":"b.txt","content":"x"}"""),
+                ApiToolCall("call_2", "write", """{"path":"b.txt","content":"[1 chars written to b.txt]"}"""),
             ),
             result[0].toolCalls,
         )

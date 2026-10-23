@@ -3,6 +3,8 @@ package com.aipaca.android.engine.agent
 import com.aipaca.android.engine.chat.ApiMessage
 import com.aipaca.android.engine.chat.ApiToolCall
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 fun stepsGuarded(iteration: Int, maxIterations: Int): Boolean = iteration < maxIterations
 
@@ -86,4 +88,26 @@ private const val MIN_BUDGET_SCALE = 0.1
 fun ToolResult.cappedTo(maxChars: Int): ToolResult {
     val capped = capToolOutput(output, maxChars.coerceAtLeast(1))
     return if (capped == output) this else copy(output = capped, truncated = true)
+}
+
+private const val WRITE_TOOL = "write"
+private const val CONTENT_ARG = "content"
+private const val PATH_ARG = "path"
+
+fun compactToolCallArgs(name: String, argsJson: String): String {
+    if (name != WRITE_TOOL) return argsJson
+    val args = try {
+        signatureJson.parseToJsonElement(argsJson) as? JsonObject
+    } catch (_: Exception) {
+        null
+    } ?: return argsJson
+    val content = (args[CONTENT_ARG] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return argsJson
+    val path = (args[PATH_ARG] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
+    val note = "[${content.length} chars written to $path]"
+    return JsonObject(args + (CONTENT_ARG to JsonPrimitive(note))).toString()
+}
+
+fun compactExecutedCalls(message: ApiMessage): ApiMessage {
+    val calls = message.toolCalls ?: return message
+    return message.copy(toolCalls = calls.map { it.copy(argumentsJson = compactToolCallArgs(it.name, it.argumentsJson)) })
 }

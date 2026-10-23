@@ -396,6 +396,24 @@ class AgentLoopTest {
     }
 
     @Test
+    fun writeContentIsCompactedBeforeNextRequest() = runBlocking {
+        val write = TestTool("write") { ToolResult(AgentToolStatus.OK, "Wrote 5 bytes to a.txt") }
+        val call = AssembledToolCall(0, "w1", "write", """{"path":"a.txt","content":"hello"}""")
+        val streamer = ScriptedStreamer(listOf(reply("", listOf(call)), reply("done")))
+
+        AgentLoop(streamer, AgentToolRegistry(listOf(write))).run(
+            SERVER_URL,
+            null,
+            SYSTEM_PROMPT,
+            listOf(ApiMessage(role = "user", content = "q")),
+            callbacks = LoopRecordingCallbacks(),
+        )
+
+        val sentCall = streamer.requests[1].messages.first { it.role == "assistant" }.toolCalls!!.single()
+        assertEquals("""{"path":"a.txt","content":"[5 chars written to a.txt]"}""", sentCall.argumentsJson)
+    }
+
+    @Test
     fun callbacksOrder() = runBlocking {
         val echo = TestTool("echo") { ToolResult(AgentToolStatus.OK, "ok") }
         val call = AssembledToolCall(0, "c1", "echo", "{}")

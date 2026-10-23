@@ -125,4 +125,33 @@ class AgentReducersTest {
         assertTrue(result.truncated)
         assertEquals(ToolResult(AgentToolStatus.OK, "short"), ToolResult(AgentToolStatus.OK, "short").cappedTo(10))
     }
+
+    @Test
+    fun writeContentIsReplacedWithNote() {
+        val args = """{"path":"index.html","content":"<html>hi</html>"}"""
+
+        val compacted = compactToolCallArgs("write", args)
+
+        assertEquals("""{"path":"index.html","content":"[15 chars written to index.html]"}""", compacted)
+    }
+
+    @Test
+    fun otherToolsAndMalformedArgsAreUntouched() {
+        assertEquals("""{"path":"a.txt"}""", compactToolCallArgs("read", """{"path":"a.txt"}"""))
+        assertEquals("{oops", compactToolCallArgs("write", "{oops"))
+        assertEquals("""{"path":"a.txt"}""", compactToolCallArgs("write", """{"path":"a.txt"}"""))
+    }
+
+    @Test
+    fun executedCallsAreCompactedInAssistantMessage() {
+        val message = ApiMessage(
+            role = "assistant",
+            content = "",
+            toolCalls = listOf(ApiToolCall("c1", "write", """{"path":"a.txt","content":"abc"}""")),
+        )
+
+        val compacted = compactExecutedCalls(message)
+
+        assertEquals("""{"path":"a.txt","content":"[3 chars written to a.txt]"}""", compacted.toolCalls!!.single().argumentsJson)
+    }
 }

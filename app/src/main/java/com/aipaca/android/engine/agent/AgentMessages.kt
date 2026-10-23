@@ -16,7 +16,7 @@ fun toApiMessages(messages: List<MessageEntity>): List<ApiMessage> =
                     ApiMessage(
                         role = "assistant",
                         content = message.content,
-                        toolCalls = toolCalls.map { ApiToolCall(it.id, it.name, it.argsJson) },
+                        toolCalls = toolCalls.map { ApiToolCall(it.id, it.name, compactToolCallArgs(it.name, it.argsJson)) },
                     )
                 }
             }
