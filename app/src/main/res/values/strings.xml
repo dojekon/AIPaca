@@ -273,4 +273,7 @@
     <string name="engine_error_exit_crashed">llama-server crashed (signal %1$d). Try another accelerator or model; the log is below.</string>
     <string name="models_thermal_balanced">The phone is hot: NPU started in Balanced power mode</string>
     <string name="models_thermal_power_saver">The phone is overheating: NPU started in Power saver mode</string>
+    <string name="agent_notification_channel">Agent</string>
+    <string name="agent_notification_done">Agent finished the task</string>
+    <string name="agent_notification_failed">Agent stopped with an error</string>
 </resources>

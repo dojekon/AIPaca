@@ -73,7 +73,10 @@ com.aipaca.android
 │                                авто-суммаризация); ModelToolProbe (/props truth-check);
 │                                AgentMessages/AgentMessageCodec/AgentReducers
 │                                tools/ — Sandbox (filesDir/agent) и инструменты
-│                                list/find/grep/read/write/edit/fetch, AgentToolRegistry
+│                                list/find/grep/read/write/edit/fetch, AgentToolRegistry;
+│                                запуск — ui/chat/AgentSessionRunner (scope приложения,
+│                                переживает уход с экрана; процесс держит EngineService),
+│                                уведомление по завершении в фоне — AgentNotifier
 ├─ engine/profiles               ProfileCatalog/Loader (assets/profiles или JSON),
 │                                ProfileParser, ProfileMatcher (accelerator-фильтр,
 │                                backend-ранжирование, тиры device/same-soc/generic),

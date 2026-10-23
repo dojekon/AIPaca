@@ -273,4 +273,7 @@
     <string name="engine_error_exit_crashed">llama-server аварийно завершился (сигнал %1$d). Попробуйте другой ускоритель или модель; лог ниже.</string>
     <string name="models_thermal_balanced">Телефон нагрет: NPU запущен в режиме «Баланс»</string>
     <string name="models_thermal_power_saver">Телефон перегрет: NPU запущен в режиме «Экономия»</string>
+    <string name="agent_notification_channel">Агент</string>
+    <string name="agent_notification_done">Агент завершил задачу</string>
+    <string name="agent_notification_failed">Агент остановился с ошибкой</string>
 </resources>

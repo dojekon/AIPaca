@@ -15,45 +15,26 @@ import com.aipaca.android.data.db.entity.ChatMode
 import com.aipaca.android.data.db.entity.MessageEntity
 import com.aipaca.android.data.hf.containsToolMarkers
 import com.aipaca.android.engine.EngineState
-import com.aipaca.android.engine.agent.AgentLoop
-import com.aipaca.android.engine.agent.AgentLoopCallbacks
 import com.aipaca.android.engine.agent.AgentLoopConfig
-import com.aipaca.android.engine.agent.AgentLoopOutcome
 import com.aipaca.android.engine.agent.AgentToolCall
 import com.aipaca.android.engine.agent.REASONING_BUDGET_MESSAGE
 import com.aipaca.android.engine.agent.COMPACTION_MIN_MESSAGES
 import com.aipaca.android.engine.agent.probeActiveChatTemplate
-import com.aipaca.android.engine.agent.ToolResult
-import com.aipaca.android.engine.agent.buildAgentSystemPrompt
-import com.aipaca.android.engine.agent.buildCompactionRequest
 import com.aipaca.android.engine.agent.contextBudget
-import com.aipaca.android.engine.agent.fetchPageCharLimit
-import com.aipaca.android.engine.agent.toolOutputCharLimit
 import com.aipaca.android.engine.agent.MAX_CONTEXT_OVERFLOW_RETRIES
 import com.aipaca.android.engine.agent.parseContextOverflow
 import com.aipaca.android.engine.agent.trimWithHysteresis
 import com.aipaca.android.engine.agent.shrunkBudgetScale
 import com.aipaca.android.engine.agent.MIN_CONTEXT_BUDGET
-import com.aipaca.android.engine.agent.estimateTokens
-import com.aipaca.android.engine.agent.splitForCompaction
 import com.aipaca.android.engine.agent.compactionInput
 import com.aipaca.android.engine.agent.agentHistory
 import com.aipaca.android.engine.agent.decodeToolCalls
-import com.aipaca.android.engine.agent.encodeToolCalls
-import com.aipaca.android.engine.agent.encodeToolResult
-import com.aipaca.android.engine.agent.sanitizeCompactionSummary
-import com.aipaca.android.engine.agent.shouldCompact
-import com.aipaca.android.engine.agent.tools.AgentToolRegistry
-import com.aipaca.android.engine.agent.tools.agentSandboxRoot
-import com.aipaca.android.engine.agent.tools.builtinTools
 import com.aipaca.android.engine.agent.toApiMessages
 import com.aipaca.android.engine.chat.ApiMessage
 import com.aipaca.android.engine.chat.ChatClient
-import com.aipaca.android.engine.chat.ChatEvent
 import com.aipaca.android.engine.chat.ChatRequest
 import com.aipaca.android.engine.chat.ChatStreamResult
 import com.aipaca.android.engine.chat.ChatTimings
-import com.aipaca.android.engine.chat.ToolCallAssembler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -66,6 +47,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -117,6 +99,8 @@ class ChatViewModel(
     private val engineManager = container.engineManager
     private val settingsRepository = container.settingsRepository
     private val chatClient = ChatClient()
+    private val agentRunner = container.agentRunner
+    private val titles = ChatTitleGenerator(container, chatClient)
 
     private val toolSupportChecked = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -129,6 +113,11 @@ class ChatViewModel(
     val mode: StateFlow<String> = _mode.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            agentRunner.events.collect { event ->
+                if (event.chatId == currentChatId.value) _errors.trySend(event.message)
+            }
+        }
         if (chatId != 0L) {
             viewModelScope.launch {
                 var settingsLoaded = false
@@ -174,20 +163,31 @@ class ChatViewModel(
         }
     }
 
+    private val agentRun: StateFlow<AgentRunState?> = combine(currentChatId, agentRunner.runs) { id, runs -> runs[id] }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private val _streamingText = MutableStateFlow<String?>(null)
-    val streamingText: StateFlow<String?> = _streamingText.asStateFlow()
+    val streamingText: StateFlow<String?> = combine(_streamingText, agentRun) { own, run -> run?.text ?: own }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _streamingReasoning = MutableStateFlow<String?>(null)
-    val streamingReasoning: StateFlow<String?> = _streamingReasoning.asStateFlow()
+    val streamingReasoning: StateFlow<String?> = combine(_streamingReasoning, agentRun) { own, run ->
+        run?.reasoning ?: own
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val _streamingToolCalls = MutableStateFlow<List<StreamingToolCallUi>>(emptyList())
-    val streamingToolCalls: StateFlow<List<StreamingToolCallUi>> = _streamingToolCalls.asStateFlow()
+    val streamingToolCalls: StateFlow<List<StreamingToolCallUi>> = agentRun
+        .map { run ->
+            run?.toolCalls.orEmpty().map { StreamingToolCallUi(it.index, it.name.orEmpty(), it.argumentsJson) }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    private val _agentStep = MutableStateFlow<AgentStepUi?>(null)
-    val agentStep: StateFlow<AgentStepUi?> = _agentStep.asStateFlow()
+    val agentStep: StateFlow<AgentStepUi?> = agentRun
+        .map { run -> run?.takeIf { it.step > 0 }?.let { AgentStepUi(it.step, it.maxIterations) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _compacting = MutableStateFlow(false)
-    val compacting: StateFlow<Boolean> = _compacting.asStateFlow()
+    val compacting: StateFlow<Boolean> = combine(_compacting, agentRun) { own, run -> own || run?.compacting == true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _streamingMessageId = MutableStateFlow<Long?>(null)
     val streamingMessageId: StateFlow<Long?> = _streamingMessageId.asStateFlow()
@@ -224,9 +224,11 @@ class ChatViewModel(
         .map { (it as? EngineState.Ready)?.modelPath?.substringAfterLast('/')?.substringBeforeLast('.') }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIBE_TIMEOUT_MS), null)
 
+    private fun busy(): Boolean = streamJob?.isActive == true || agentRunner.isRunning(currentChatId.value)
+
     fun send(text: String): Boolean {
         val content = text.trim()
-        if (content.isEmpty() || streamJob?.isActive == true) return false
+        if (content.isEmpty() || busy()) return false
         val serverUrl = readyServerUrl() ?: return false
         streamJob = viewModelScope.launch {
             val chat = ensureChat(content)
@@ -239,13 +241,18 @@ class ChatViewModel(
                     createdAt = sentAt,
                 ),
             )
-            if (_mode.value == ChatMode.AGENT) runAgent(chat, serverUrl, sentAt) else stream(chat, serverUrl)
+            if (_mode.value == ChatMode.AGENT) {
+                agentRunner.start(chat, serverUrl, sentAt, agentConfig())
+            } else {
+                stream(chat, serverUrl)
+            }
         }
         return true
     }
 
     fun stop() {
         streamJob?.cancel()
+        currentChatId.value.takeIf { it != 0L }?.let(agentRunner::stop)
     }
 
     fun renameChat(title: String) {
@@ -263,6 +270,7 @@ class ChatViewModel(
         val id = currentChatId.value
         if (id == 0L) return
         streamJob?.cancel()
+        agentRunner.stop(id)
         viewModelScope.launch {
             withContext(NonCancellable) {
                 val chat = chatDao.observeById(id).first() ?: return@withContext
@@ -275,7 +283,7 @@ class ChatViewModel(
 
     fun regenerate(): Boolean {
         if (_mode.value == ChatMode.AGENT) return false
-        if (streamJob?.isActive == true) return false
+        if (busy()) return false
         val serverUrl = readyServerUrl() ?: return false
         val chat = currentChatId.value
         if (chat == 0L) return false
@@ -289,7 +297,7 @@ class ChatViewModel(
     }
 
     fun compact(): Boolean {
-        if (streamJob?.isActive == true) return false
+        if (busy()) return false
         val chatId = currentChatId.value
         if (chatId == 0L) return false
         if (_mode.value != ChatMode.AGENT) return false
@@ -301,7 +309,7 @@ class ChatViewModel(
                 val history = agentHistory(messageDao.getForChat(chatId))
                 if (history.messages.size < COMPACTION_MIN_MESSAGES) return@launch
                 val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
-                val summary = summarize(
+                val summary = agentRunner.summarize(
                     serverUrl,
                     apiKey,
                     compactionInput(history.summary, toApiMessages(history.messages)),
@@ -381,6 +389,20 @@ class ChatViewModel(
         return url
     }
 
+    private fun agentConfig(): AgentLoopConfig {
+        val params = _params.value
+        return AgentLoopConfig(
+            maxIterations = params.maxIterations.coerceIn(1, 100),
+            temperature = params.temperature,
+            topP = params.topP,
+            topK = params.topK,
+            minP = params.minP,
+            repeatPenalty = params.repeatPenalty,
+            reasoningBudget = params.reasoningBudget.takeIf { it > 0 },
+            reasoningBudgetMessage = if (params.reasoningBudget > 0) REASONING_BUDGET_MESSAGE else null,
+        )
+    }
+
     private fun persistSettings() {
         val id = currentChatId.value
         if (id == 0L) return
@@ -413,204 +435,6 @@ class ChatViewModel(
         return id
     }
 
-    private suspend fun runAgent(chatId: Long, serverUrl: String, turnStartedAt: Long) {
-        val sandbox = agentSandboxRoot(application.filesDir)
-        sandbox.mkdirs()
-        val nCtx = engineManager.contextSize ?: AGENT_FALLBACK_CONTEXT
-        val toolOutputChars = toolOutputCharLimit(contextBudget(nCtx, AGENT_TOOLS_RESERVE_CHARS))
-        val tools = builtinTools(sandbox, fetchPageChars = { fetchPageCharLimit(toolOutputChars) })
-        val registry = AgentToolRegistry(tools)
-        val systemPrompt = buildAgentSystemPrompt(tools)
-        val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
-        val history = agentHistory(messageDao.getForChat(chatId))
-        var contextSummary = history.summary
-        val apiMessages = toApiMessages(history.messages)
-
-        val toolsChars = registry.manifest.sumOf {
-            it.parametersJsonSchema.length + it.description.length + it.name.length
-        }
-        val budget = contextBudget(nCtx, toolsChars)
-        var budgetScale = 1.0
-        fun messagesBudget(): Int =
-            ((budget * budgetScale).toInt() - estimateTokens(contextSummary.orEmpty()))
-                .coerceAtLeast(MIN_CONTEXT_BUDGET)
-        val contextPreparer: suspend (List<ApiMessage>) -> List<ApiMessage> = preparer@ { messages ->
-            val trimmed = trimWithHysteresis(messages, messagesBudget())
-            if (trimmed.estimatedTokens <= messagesBudget() ||
-                !shouldCompact(trimmed.estimatedTokens, messagesBudget(), trimmed.messages.size)
-            ) {
-                return@preparer trimmed.messages
-            }
-            val split = splitForCompaction(messages)
-            if (split.older.isEmpty()) return@preparer trimmed.messages
-            _compacting.value = true
-            try {
-                val summary = summarize(serverUrl, apiKey, compactionInput(contextSummary, split.older))
-                if (summary == null) {
-                    Log.i(TAG, "Context compaction failed; using trimmed history")
-                    return@preparer trimmed.messages
-                }
-                messageDao.insert(
-                    MessageEntity(
-                        chatId = chatId,
-                        role = ROLE_SYSTEM,
-                        content = summary,
-                        createdAt = turnStartedAt - 1,
-                    ),
-                )
-                chatDao.updateTimestamp(chatId, System.currentTimeMillis())
-                contextSummary = summary
-                Log.i(TAG, "Context compacted: ${split.older.size} messages -> summary")
-                trimWithHysteresis(split.activeTurn, messagesBudget()).messages
-            } finally {
-                _compacting.value = false
-            }
-        }
-
-        val text = StringBuilder()
-        val reasoning = StringBuilder()
-        var toolAssembler = ToolCallAssembler()
-        var assistantSavedThisStep = false
-        val throttle = StreamThrottle()
-        fun publishAgentStream() {
-            _streamingText.value = text.toString()
-            _streamingReasoning.value = reasoning.toString()
-            _streamingToolCalls.value = toolAssembler.finish().map {
-                StreamingToolCallUi(it.index, it.name.orEmpty(), it.argumentsJson)
-            }
-        }
-
-        val callbacks = object : AgentLoopCallbacks {
-            override suspend fun onAssistantStart() {
-                throttle.reset()
-                text.clear()
-                reasoning.clear()
-                assistantSavedThisStep = false
-                _streamingText.value = ""
-                _streamingReasoning.value = ""
-                _streamingToolCalls.value = emptyList()
-                toolAssembler = ToolCallAssembler()
-            }
-
-            override fun onTextDelta(textDelta: String, isReasoning: Boolean) {
-                if (isReasoning) reasoning.append(textDelta) else text.append(textDelta)
-                if (throttle.ready()) publishAgentStream()
-            }
-
-            override fun onToolCallDelta(delta: ChatEvent.ToolCallDelta) {
-                toolAssembler.add(delta)
-                if (throttle.ready()) publishAgentStream()
-            }
-
-            override fun onStep(step: Int, maxIterations: Int) {
-                _agentStep.value = AgentStepUi(step, maxIterations)
-            }
-
-            override suspend fun onAssistantSaved(
-                content: String,
-                toolCalls: List<AgentToolCall>,
-                timings: ChatTimings?,
-            ) {
-                assistantSavedThisStep = true
-                messageDao.insert(
-                    MessageEntity(
-                        chatId = chatId,
-                        role = ROLE_ASSISTANT,
-                        content = content,
-                        reasoning = reasoning.toString().ifEmpty { null },
-                        toolCalls = encodeToolCalls(toolCalls).takeIf { toolCalls.isNotEmpty() },
-                        createdAt = System.currentTimeMillis(),
-                        tokensIn = timings?.promptN,
-                        tokensOut = timings?.predictedN,
-                        tps = timings?.predictedPerSecond,
-                    ),
-                )
-                chatDao.updateTimestamp(chatId, System.currentTimeMillis())
-                text.clear()
-                reasoning.clear()
-                toolAssembler = ToolCallAssembler()
-                _streamingText.value = ""
-                _streamingReasoning.value = ""
-                _streamingToolCalls.value = emptyList()
-            }
-
-            override suspend fun onToolStarted(call: AgentToolCall) {
-            }
-
-            override suspend fun onToolFinished(call: AgentToolCall, result: ToolResult) {
-                messageDao.insert(
-                    MessageEntity(
-                        chatId = chatId,
-                        role = ROLE_TOOL,
-                        content = encodeToolResult(result),
-                        toolCallId = call.id,
-                        createdAt = System.currentTimeMillis(),
-                    ),
-                )
-                chatDao.updateTimestamp(chatId, System.currentTimeMillis())
-            }
-        }
-
-        try {
-            val outcome = AgentLoop(chatClient, registry).run(
-                serverUrl = serverUrl,
-                apiKey = apiKey,
-                systemPrompt = systemPrompt,
-                history = apiMessages,
-                config = AgentLoopConfig(
-                    maxIterations = _params.value.maxIterations.coerceIn(1, 100),
-                    temperature = _params.value.temperature,
-                    topP = _params.value.topP,
-                    topK = _params.value.topK,
-                    minP = _params.value.minP,
-                    repeatPenalty = _params.value.repeatPenalty,
-                    reasoningBudget = _params.value.reasoningBudget.takeIf { it > 0 },
-                    reasoningBudgetMessage = if (_params.value.reasoningBudget > 0) {
-                        REASONING_BUDGET_MESSAGE
-                    } else {
-                        null
-                    },
-                    toolOutputMaxChars = toolOutputChars,
-                ),
-                contextPreparer = contextPreparer,
-                contextSummary = { contextSummary },
-                onContextOverflow = { overflow ->
-                    budgetScale = shrunkBudgetScale(budgetScale, overflow)
-                    Log.i(TAG, "Context overflow $overflow; budget scale -> $budgetScale")
-                    true
-                },
-                callbacks = callbacks,
-            )
-            when (outcome) {
-                is AgentLoopOutcome.Completed -> maybeGenerateTitle(chatId)
-                is AgentLoopOutcome.LimitReached ->
-                    _errors.trySend(application.getString(R.string.agent_error_max_iterations))
-                is AgentLoopOutcome.Failed -> _errors.trySend(outcome.message)
-            }
-        } catch (e: CancellationException) {
-            withContext(NonCancellable) {
-                if (!assistantSavedThisStep && (text.isNotEmpty() || reasoning.isNotEmpty())) {
-                    messageDao.insert(
-                        MessageEntity(
-                            chatId = chatId,
-                            role = ROLE_ASSISTANT,
-                            content = text.toString(),
-                            reasoning = reasoning.toString().ifEmpty { null },
-                            createdAt = System.currentTimeMillis(),
-                        ),
-                    )
-                }
-                chatDao.updateTimestamp(chatId, System.currentTimeMillis())
-            }
-            throw e
-        } finally {
-            _streamingText.value = null
-            _streamingReasoning.value = null
-            _streamingToolCalls.value = emptyList()
-            _agentStep.value = null
-        }
-    }
-
     private suspend fun stream(chatId: Long, serverUrl: String) {
         val placeholder = MessageEntity(
             chatId = chatId,
@@ -632,7 +456,7 @@ class ChatViewModel(
                 .map { ApiMessage(role = it.role, content = it.content) }
             val systemPrompt = _systemPrompt.value.trim().ifEmpty { null }
             val budget = contextBudget(
-                engineManager.contextSize ?: AGENT_FALLBACK_CONTEXT,
+                engineManager.contextSize ?: FALLBACK_CONTEXT,
                 systemPrompt?.length ?: 0,
             )
             val baseRequest = ChatRequest(
@@ -685,7 +509,7 @@ class ChatViewModel(
                         ),
                     )
                     chatDao.updateTimestamp(chatId, System.currentTimeMillis())
-                    maybeGenerateTitle(chatId)
+                    viewModelScope.launch { titles.maybeGenerate(chatId) }
                 },
                 onFailure = { error ->
                     val fallback = error.message ?: application.getString(R.string.chat_error_send)
@@ -718,61 +542,6 @@ class ChatViewModel(
         }
     }
 
-    private suspend fun summarize(
-        serverUrl: String,
-        apiKey: String?,
-        history: List<ApiMessage>,
-    ): String? = try {
-        chatClient.complete(
-            serverUrl = serverUrl,
-            apiKey = apiKey,
-            request = buildCompactionRequest(history),
-            timeoutSeconds = COMPACTION_TIMEOUT_SECONDS,
-        ).getOrNull()?.let { sanitizeCompactionSummary(it) }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: Exception) {
-        null
-    }
-
-    private fun maybeGenerateTitle(chatId: Long) {
-        viewModelScope.launch {
-            try {
-                val serverUrl = engineManager.serverUrl ?: return@launch
-                val history = messageDao.getForChat(chatId)
-                val conversational = history.filter {
-                    it.role == ROLE_USER ||
-                        (it.role == ROLE_ASSISTANT && it.content.isNotBlank() && decodeToolCalls(it.toolCalls).isEmpty())
-                }
-                val userMessage = conversational.firstOrNull { it.role == ROLE_USER } ?: return@launch
-                val assistantMessage = conversational.firstOrNull { it.role == ROLE_ASSISTANT } ?: return@launch
-                val chat = chatDao.observeById(chatId).first() ?: return@launch
-                val autoTitle = chatTitleFrom(userMessage.content)
-                if (!shouldGenerateTitle(conversational.size, chat.title, autoTitle)) return@launch
-                val apiKey = settingsRepository.settings.first().serverApiKey.trim().ifEmpty { null }
-                val generated = chatClient.complete(
-                    serverUrl = serverUrl,
-                    apiKey = apiKey,
-                    request = buildTitleRequest(userMessage.content, assistantMessage.content),
-                    timeoutSeconds = TITLE_TIMEOUT_SECONDS,
-                ).getOrElse { error ->
-                    Log.w(TITLE_TAG, "Title request failed", error)
-                    return@launch
-                }
-                val title = sanitizeGeneratedTitle(generated)
-                if (title == null) {
-                    Log.w(TITLE_TAG, "Title response rejected: ${generated.take(80)}")
-                    return@launch
-                }
-                chatDao.updateTitleIfMatches(chatId, title, autoTitle)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TITLE_TAG, "Title generation failed", e)
-            }
-        }
-    }
-
     private fun MessageEntity.toUi(): MessageUi = MessageUi(
         id = id,
         role = role,
@@ -796,15 +565,13 @@ class ChatViewModel(
 
         private const val SUBSCRIBE_TIMEOUT_MS = 5_000L
 
-        private const val AGENT_FALLBACK_CONTEXT = 4096
+        private const val FALLBACK_CONTEXT = 4096
 
-        private const val AGENT_TOOLS_RESERVE_CHARS = 2400
 
-        private const val COMPACTION_TIMEOUT_SECONDS = 60L
+
 
         private const val TAG = "AgentContext"
 
-        private const val TITLE_TAG = "ChatTitle"
 
         private const val SETTINGS_SAVE_DEBOUNCE_MS = 300L
 
@@ -819,7 +586,6 @@ class ChatViewModel(
 
 private const val CHAT_TITLE_MAX_LENGTH = 40
 
-private const val TITLE_TIMEOUT_SECONDS = 30L
 
 fun chatTitleFrom(text: String): String =
     text.replace(Regex("\\s+"), " ").trim().take(CHAT_TITLE_MAX_LENGTH)

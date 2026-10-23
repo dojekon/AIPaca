@@ -55,6 +55,8 @@ required before completing any task.
   list/find/grep/read/write/edit/fetch), `AgentToolRegistry`, `AgentSystemPrompt` (pi-style),
   `ContextBudget`/`HistoryTrim`/`Compaction`, `ModelToolProbe` (`/props` truth-check),
   `AgentMessageCodec`/`AgentMessages`/`AgentReducers` (pure loop reducers).
+- `ui/chat` — `AgentSessionRunner` (app-scoped agent runs per chat, survive leaving the screen; process kept by
+  `EngineService` FGS), `ChatTitleGenerator`, `AgentNotifier` (completion notification when backgrounded).
 - `ui` — chat, models, search, bench, server, screens (DownloadsMenu/Settings/Server), common;
   drawer `Chat | Agent` mode toggle + mode-filtered history (`ChatDao.observeForMode`), agent tool
   cards/steps in `ChatScreen`, Tools badges in Search/Details/Models.
