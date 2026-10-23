@@ -40,4 +40,7 @@ interface ChatDao {
 
     @Query("UPDATE chats SET title = :title WHERE id = :id AND title = :expectedTitle")
     suspend fun updateTitleIfMatches(id: Long, title: String, expectedTitle: String)
+
+    @Query("UPDATE chats SET paramsJson = :paramsJson, systemPrompt = :systemPrompt WHERE id = :id")
+    suspend fun updateSettings(id: Long, paramsJson: String?, systemPrompt: String?)
 }

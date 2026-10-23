@@ -71,6 +71,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -120,6 +121,7 @@ class ChatViewModel(
     private val currentChatId = MutableStateFlow(chatId)
     private var streamJob: Job? = null
     private var compactJob: Job? = null
+    private var settingsJob: Job? = null
 
     private val _mode = MutableStateFlow(initialMode)
     val mode: StateFlow<String> = _mode.asStateFlow()
@@ -127,8 +129,15 @@ class ChatViewModel(
     init {
         if (chatId != 0L) {
             viewModelScope.launch {
+                var settingsLoaded = false
                 chatDao.observeById(chatId).collect { chat ->
-                    if (chat != null && chat.mode != _mode.value) {
+                    if (chat == null) return@collect
+                    if (!settingsLoaded) {
+                        settingsLoaded = true
+                        _mode.value = chat.mode
+                        _params.value = decodeChatParams(chat.paramsJson, chat.mode)
+                        _systemPrompt.value = chat.systemPrompt.orEmpty()
+                    } else if (chat.mode != _mode.value) {
                         if (_params.value == defaultChatParams(_mode.value)) {
                             _params.value = defaultChatParams(chat.mode)
                         }
@@ -319,38 +328,47 @@ class ChatViewModel(
 
     fun updateTemperature(value: Double) {
         _params.update { it.copy(temperature = value) }
+        persistSettings()
     }
 
     fun updateTopP(value: Double) {
         _params.update { it.copy(topP = value) }
+        persistSettings()
     }
 
     fun updateTopK(value: Int) {
         _params.update { it.copy(topK = value) }
+        persistSettings()
     }
 
     fun updateMinP(value: Double) {
         _params.update { it.copy(minP = value) }
+        persistSettings()
     }
 
     fun updateRepeatPenalty(value: Double) {
         _params.update { it.copy(repeatPenalty = value) }
+        persistSettings()
     }
 
     fun updateMaxIterations(value: Int) {
         _params.update { it.copy(maxIterations = value.coerceIn(1, 100)) }
+        persistSettings()
     }
 
     fun updateReasoningBudget(value: Int) {
         _params.update { it.copy(reasoningBudget = value.coerceIn(0, 4096)) }
+        persistSettings()
     }
 
     fun updateSystemPrompt(value: String) {
         _systemPrompt.value = value
+        persistSettings()
     }
 
     fun resetParams() {
         _params.value = defaultChatParams(_mode.value)
+        persistSettings()
     }
 
     private fun readyServerUrl(): String? {
@@ -359,6 +377,20 @@ class ChatViewModel(
             _errors.trySend(application.getString(R.string.chat_error_engine_off))
         }
         return url
+    }
+
+    private fun persistSettings() {
+        val id = currentChatId.value
+        if (id == 0L) return
+        settingsJob?.cancel()
+        settingsJob = viewModelScope.launch {
+            delay(SETTINGS_SAVE_DEBOUNCE_MS)
+            chatDao.updateSettings(
+                id,
+                encodeChatParams(_params.value, _mode.value),
+                _systemPrompt.value.trim().ifEmpty { null },
+            )
+        }
     }
 
     private suspend fun ensureChat(firstMessage: String): Long {
@@ -371,6 +403,8 @@ class ChatViewModel(
                 createdAt = now,
                 updatedAt = now,
                 mode = _mode.value,
+                systemPrompt = _systemPrompt.value.trim().ifEmpty { null },
+                paramsJson = encodeChatParams(_params.value, _mode.value),
             ),
         )
         currentChatId.value = id
@@ -764,6 +798,8 @@ class ChatViewModel(
         private const val TAG = "AgentContext"
 
         private const val TITLE_TAG = "ChatTitle"
+
+        private const val SETTINGS_SAVE_DEBOUNCE_MS = 300L
 
         fun factory(chatId: Long, initialMode: String = ChatMode.CHAT): ViewModelProvider.Factory = viewModelFactory {
             initializer {
