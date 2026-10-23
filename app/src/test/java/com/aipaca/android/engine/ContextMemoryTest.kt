@@ -98,6 +98,13 @@ class ContextMemoryTest {
     }
 
     @Test
+    fun computeBufferMatchesS24uCalibration() {
+        val mib = 1024L * 1024
+        assertEquals(420L, computeBufferBytes(qwen3, 128) / mib)
+        assertEquals(480L, computeBufferBytes(qwen3, 512) / mib)
+    }
+
+    @Test
     fun totalSumsParts() {
         val estimate = estimateContextMemory(qwen3, 2_000_000_000L, 4096, "q8_0", "q8_0", 128)
 

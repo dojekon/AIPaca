@@ -7,7 +7,7 @@ const val SERVER_PARALLEL_SLOTS = 4
 const val KV_CELL_PADDING = 256
 const val NPU_SESSION_VMEM_BYTES = 3_355_443_200L
 
-private const val COMPUTE_BASE_BYTES = 320L * 1024 * 1024
+private const val COMPUTE_BASE_BYTES = 400L * 1024 * 1024
 private const val ACTIVATION_FACTOR = 4
 private const val FLOAT_BYTES = 4L
 
@@ -68,12 +68,11 @@ fun kvCacheBytes(
 }
 
 fun computeBufferBytes(meta: GgufMetadata, ubatch: Int): Long {
-    val vocab = (meta.vocabSize ?: 0).toLong()
     val hidden = maxOf(
         meta.feedForwardLength.maxOrNull() ?: 0,
         (meta.embeddingLength ?: 0) * ACTIVATION_FACTOR,
     ).toLong()
-    return COMPUTE_BASE_BYTES + ubatch.toLong() * FLOAT_BYTES * (vocab + ACTIVATION_FACTOR * hidden)
+    return COMPUTE_BASE_BYTES + ubatch.toLong() * FLOAT_BYTES * ACTIVATION_FACTOR * hidden
 }
 
 fun estimateContextMemory(
