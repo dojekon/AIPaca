@@ -25,6 +25,13 @@ class ServerArgBuilderTest {
     }
 
     @Test
+    fun cacheReuseIsNotPassedForHexagon() {
+        val npu = qwen.copy(backend = "hexagon")
+
+        assertFalse(ServerArgBuilder.build("/x/model.gguf", npu, "127.0.0.1", 8080, null).contains("--cache-reuse"))
+    }
+
+    @Test
     fun flashAttnNeverSwallowsNextFlag() {
         val args = ServerArgBuilder.build("/x/model.gguf", qwen, "127.0.0.1", 8080, null)
 
