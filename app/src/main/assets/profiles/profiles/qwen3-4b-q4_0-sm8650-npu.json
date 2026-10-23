@@ -9,7 +9,8 @@
   },
   "launch": {
     "nCtx": 4096,
-    "threads": 4,
+    "threads": 2,
+    "ubatchSize": 512,
     "cpuMask": "0xF0",
     "nGpuLayers": 99,
     "flashAttn": true,
