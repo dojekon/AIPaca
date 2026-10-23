@@ -16,6 +16,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 const val FETCH_DEFAULT_PAGE_CHARS = 16 * 1024
 private const val FETCH_MAX_DOWNLOAD_BYTES = 2L * 1024 * 1024
+const val FETCH_USER_AGENT = "AiPaca/0.1 (Android; on-device agent)"
+private const val USER_AGENT_HEADER = "User-Agent"
 
 class FetchTool(
     private val client: OkHttpClient = defaultFetchClient(),
@@ -52,6 +54,9 @@ class FetchTool(
 
             val builder = Request.Builder().url(url)
             headers.forEach { (key, value) -> builder.addHeader(key, value) }
+            if (headers.keys.none { it.equals(USER_AGENT_HEADER, ignoreCase = true) }) {
+                builder.header(USER_AGENT_HEADER, FETCH_USER_AGENT)
+            }
             val request = if (method == "POST") {
                 builder.post((body ?: "").toRequestBody(null)).build()
             } else {

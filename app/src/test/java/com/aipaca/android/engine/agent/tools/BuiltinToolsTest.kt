@@ -273,6 +273,23 @@ class BuiltinToolsTest {
     }
 
     @Test
+    fun fetchSendsDefaultUserAgentUnlessProvided() {
+        withSandbox { root ->
+            withHttpServer(::responderFor) { base, requests ->
+                runBlocking { FetchTool().execute("""{"url":"$base/hello"}""") }
+                runBlocking {
+                    FetchTool().execute("""{"url":"$base/hello","headers":{"user-agent":"Custom/1"}}""")
+                }
+
+                val sent = requests()
+                assertTrue(sent[0].contains("User-Agent: $FETCH_USER_AGENT"))
+                assertTrue(sent[1].contains("Custom/1"))
+                assertTrue(!sent[1].contains(FETCH_USER_AGENT))
+            }
+        }
+    }
+
+    @Test
     fun fetchConvertsHtmlToText() {
         withSandbox { root ->
             withHttpServer(::responderFor) { base, _ ->
