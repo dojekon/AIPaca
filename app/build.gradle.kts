@@ -30,9 +30,9 @@ android {
         if (releaseKeystore != null) {
             create("release") {
                 storeFile = releaseKeystore
-                storePassword = System.getenv("AIPACA_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("AIPACA_KEY_ALIAS")
-                keyPassword = System.getenv("AIPACA_KEY_PASSWORD")
+                storePassword = System.getenv("AIPACA_KEYSTORE_PASSWORD")?.trim()
+                keyAlias = System.getenv("AIPACA_KEY_ALIAS")?.trim()
+                keyPassword = System.getenv("AIPACA_KEY_PASSWORD")?.trim()
             }
         }
     }
