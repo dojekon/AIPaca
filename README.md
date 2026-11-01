@@ -26,10 +26,6 @@ Inference is fully local: no cloud backend and no account required.
 The app is optimized for Snapdragon 8 Gen 3 (SM8650 / Galaxy S24 Ultra), but generic `arm64-v8a`
 profiles work on other devices.
 
-> **Project status:** milestones M0–M6 are complete (model import → engine → chat → HF downloads →
-> API server → profiles/benchmarks → polish). 330+ JVM unit tests, lint, and the debug build are
-> green. The core end-to-end flow has been verified on a Galaxy S24 Ultra.
-
 ## Features
 
 | Area | Capability |
@@ -116,7 +112,7 @@ app/                     Android app (Kotlin, Compose, Room)
 scripts/                 engine build script and version info
 profiles-repo/           example GitHub profile repository
 docs/                    architecture, profiles, and build documentation
-.github/workflows/       Android CI and engine build
+.github/workflows/       Android CI, engine build and releases
 ```
 
 ## Testing and CI
@@ -133,6 +129,17 @@ native engine in Docker and uploads `app/src/main/jniLibs` as a separate artifac
 
 Because native libraries are not tracked, a runnable APK needs the engine artifact (or a local
 `./scripts/build-engine.sh` run) staged into `app/src/main/jniLibs/arm64-v8a`.
+
+## Releases
+
+Every push to `main` runs [`release.yml`](.github/workflows/release.yml): it builds the engine at
+the llama.cpp revision pinned in [`scripts/engine-ref.txt`](scripts/engine-ref.txt) (cached until
+the revision changes), runs the unit tests, builds a signed release APK and publishes it as a
+GitHub release `vX.Y.Z`.
+
+Versions are computed by [`scripts/next-version.sh`](scripts/next-version.sh): the patch number
+is bumped by default, `#minor` or `#major` in a commit message bumps that part instead.
+`versionCode` is the number of commits on `main`.
 
 ## Documentation
 

@@ -8,6 +8,8 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val releaseKeystore = System.getenv("AIPACA_KEYSTORE_FILE")?.let(::file)?.takeIf { it.exists() }
+
 android {
     namespace = "com.aipaca.android"
     compileSdk = 36
@@ -16,16 +18,28 @@ android {
         applicationId = "com.aipaca.android"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = (findProperty("aipaca.versionCode") as String?)?.toInt() ?: 1
+        versionName = (findProperty("aipaca.versionName") as String?) ?: "0.1.0"
 
         ndk {
             abiFilters += "arm64-v8a"
         }
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("AIPACA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("AIPACA_KEY_ALIAS")
+                keyPassword = System.getenv("AIPACA_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
