@@ -85,6 +85,44 @@ class GgufMetadataTest {
         assertTrue(meta.isSwaLayer(6))
     }
 
+    @Test
+    fun countsWeightElementsByTypeForMatrices() {
+        val bytes = gguf {
+            string("general.architecture", "lfm3")
+            uint32("lfm3.block_count", 2)
+            tensor("token_embd.weight", listOf(64, 10), 14)
+            tensor("blk.0.attn_q.weight", listOf(64, 64), 12)
+            tensor("blk.1.attn_q.weight", listOf(64, 64), 12)
+            tensor("blk.0.attn_norm.weight", listOf(64), 0)
+        }
+
+        val meta = readGgufMetadata(ByteArrayInputStream(bytes))
+
+        assertEquals("lfm3", meta.architecture)
+        assertEquals(mapOf("Q6_K" to 640L, "Q4_K" to 8192L), meta.weightTypes)
+    }
+
+    @Test
+    fun unknownTensorTypeKeepsNumericName() {
+        val bytes = gguf {
+            string("general.architecture", "qwen3")
+            uint32("qwen3.block_count", 1)
+            tensor("blk.0.ffn_up.weight", listOf(32, 32), 99)
+        }
+
+        assertEquals(mapOf("TYPE_99" to 1024L), readGgufMetadata(ByteArrayInputStream(bytes)).weightTypes)
+    }
+
+    @Test(expected = IOException::class)
+    fun rejectsTruncatedTensorInfo() {
+        val bytes = gguf {
+            string("general.architecture", "qwen3")
+            uint32("qwen3.block_count", 1)
+            tensor("blk.0.ffn_up.weight", listOf(32, 32), 2)
+        }
+        readGgufMetadata(ByteArrayInputStream(bytes.copyOf(bytes.size - 6)))
+    }
+
     @Test(expected = IOException::class)
     fun rejectsNonGguf() {
         readGgufMetadata(ByteArrayInputStream("not a gguf file at all".toByteArray()))
@@ -99,6 +137,8 @@ class GgufMetadataTest {
 
 internal class GgufBuilder {
     private val body = ByteArrayOutputStream()
+    private val tensors = ByteArrayOutputStream()
+    private var tensorCount = 0L
     var count = 0L
         private set
 
@@ -153,13 +193,26 @@ internal class GgufBuilder {
         values.forEach(::rawString)
     }
 
+    fun tensor(name: String, dims: List<Long>, type: Int) {
+        tensorCount++
+        val nameBytes = name.toByteArray()
+        val buffer = ByteBuffer.allocate(8 + nameBytes.size + 4 + dims.size * 8 + 4 + 8).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putLong(nameBytes.size.toLong())
+        buffer.put(nameBytes)
+        buffer.putInt(dims.size)
+        dims.forEach(buffer::putLong)
+        buffer.putInt(type)
+        buffer.putLong(0)
+        tensors.write(buffer.array())
+    }
+
     fun build(): ByteArray {
         val header = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN)
         header.put("GGUF".toByteArray())
         header.putInt(3)
-        header.putLong(0)
+        header.putLong(tensorCount)
         header.putLong(count)
-        return header.array() + body.toByteArray()
+        return header.array() + body.toByteArray() + tensors.toByteArray()
     }
 }
 

@@ -21,21 +21,22 @@
 Что делает скрипт:
 
 1. Проверяет Docker и ≥8 ГБ свободного места.
-2. Клонирует `ggml-org/llama.cpp` (`--depth 1`, **HEAD**; если `build/engine/llama.cpp`
-   уже существует — использует как есть, без fetch/reset).
-3. Тянет образ `ghcr.io/snapdragon-toolchain/arm64-android:v0.7` (NDK r29, Snapdragon
+2. Клонирует `ggml-org/llama.cpp` и переключает его на ревизию из `scripts/engine-ref.txt`
+   (`LLAMA_REF=<sha|branch>` переопределяет её, `LLAMA_REF=keep` оставляет checkout как есть).
+3. Тянет образ `ghcr.io/snapdragon-toolchain/arm64-android:v0.8` (NDK r29, Snapdragon
    toolchain) и собирает preset `arm64-android-snapdragon-release` (CPU + OpenCL + Hexagon).
 4. Раскладывает результат в `app/src/main/jniLibs/arm64-v8a`: `libllama-server.so`,
    `libllama-bench.so`, все `lib*.so`, при необходимости `libc++_shared.so` и
    `libQnnHtpV75Skel.so` (проприетарный, только локально).
 5. Проверяет ELF (`AArch64`; htp-библиотеки — `QUALCOMM DSP6`) и копирует в jniLibs.
+6. Генерирует `app/src/main/assets/engine/capabilities.json` (`scripts/engine-capabilities.sh`):
+   список архитектур из `src/llama-arch.cpp` и типов весов, которые Hexagon умеет в matmul.
+   Приложение по нему проверяет архитектуру GGUF и решает, пойдёт ли модель на NPU, —
+   этот файл коммитится вместе со сменой ревизии.
 
 Версии сборки пишутся в `scripts/engine-version.txt` (и `build/engine/version.txt`).
-Последняя локальная сборка: образ `v0.7`, preset `arm64-android-snapdragon-release`,
-llama.cpp **23f7aabc16c72f6f707dba227251c35d7bd1ed96** (2026-10-16) — это HEAD на момент
-клонирования; скрипт коммит не пинит, для воспроизводимости фиксируйте его сами.
-Повторная сборка не обновит исходники: удалите `build/engine/llama.cpp` или обновите
-его вручную.
+Чтобы обновить движок: впишите новый sha в `scripts/engine-ref.txt`, запустите скрипт и
+закоммитьте `engine-ref.txt`, `engine-version.txt` и `capabilities.json`.
 
 ## 2. Приложение
 
@@ -59,9 +60,10 @@ workflow лишь предупреждает, если каталог пуст. 
 2. скачайте артефакт `engine-jniLibs-arm64-v8a` и распакуйте в
    `app/src/main/jniLibs/arm64-v8a`.
 
-Артефакты Actions доступны только внутри своего запуска, поэтому для полностью
-автоматического CI добавьте шаг получения библиотек (release-ассет, кэш или внешнее
-хранилище) перед сборкой APK.
+`.github/workflows/release.yml` на каждый push в `main` собирает движок сам (кэш по
+`engine-ref.txt` + `build-engine.sh`), подписывает release APK ключом из секретов
+`AIPACA_KEYSTORE_BASE64`, `AIPACA_KEYSTORE_PASSWORD`, `AIPACA_KEY_ALIAS`, `AIPACA_KEY_PASSWORD`
+и публикует GitHub release с автоверсией (`scripts/next-version.sh`).
 
 ## 3. Установка
 

@@ -43,6 +43,16 @@ data class HfModelDetails(
 )
 
 @Serializable
+data class HfGgufSummary(
+    val architecture: String? = null,
+)
+
+@Serializable
+data class HfModelGguf(
+    val gguf: HfGgufSummary? = null,
+)
+
+@Serializable
 data class HfSibling(
     val rfilename: String,
     val size: Long? = null,

@@ -108,6 +108,51 @@ class ProfileMatcherTest {
         assertNull(result.profile)
     }
 
+    @Test
+    fun npuWithoutFamilyHexagonProfileUsesHexagonDefault() {
+        val result = matcherWithHexagonDefault().match(sm8650, "LFM3-1.7B-Q4_K_M.gguf", null, Accelerator.NPU)
+
+        assertEquals("default", result.reason)
+        assertEquals("default/hexagon", result.profile?.doc?.id)
+    }
+
+    @Test
+    fun npuPrefersHexagonDefaultOverCpuFamilyProfile() {
+        val result = matcherWithHexagonDefault().match(sm8650, "gemma-3-4b-Q4_0.gguf", null, Accelerator.NPU)
+
+        assertEquals("default/hexagon", result.profile?.doc?.id)
+    }
+
+    @Test
+    fun npuStillPrefersFamilyHexagonProfile() {
+        val result = matcherWithHexagonDefault().match(sm8650, "Qwen3-4B-Q4_0.gguf", null, Accelerator.NPU)
+
+        assertEquals("qwen3-4b/q4_0/sm8650-12gb-npu", result.profile?.doc?.id)
+    }
+
+    @Test
+    fun cpuIgnoresHexagonDefault() {
+        val result = matcherWithHexagonDefault().match(sm8650, "LFM3-1.7B-Q4_K_M.gguf", null, Accelerator.CPU)
+
+        assertEquals("default/generic-arm64", result.profile?.doc?.id)
+    }
+
+    private fun matcherWithHexagonDefault(): ProfileMatcher {
+        val index = ProfileParser.parseIndex(fixture("index.json"))
+        val extended = index.copy(
+            profiles = index.profiles + ProfileIndexEntry(
+                id = "default/hexagon",
+                family = "default",
+                device = "generic-arm64/8gb",
+                file = "profiles/default-hexagon.json",
+            ),
+        )
+        val catalog = ProfileCatalogLoader.fromJson(
+            ProfileParser.json.encodeToString(ProfileIndexDoc.serializer(), extended),
+        ) { path -> resource("/profiles/$path") }
+        return ProfileMatcher(catalog)
+    }
+
     private fun matcher(): ProfileMatcher =
         ProfileMatcher(ProfileCatalogLoader.fromJson(fixture("index.json")) { path -> resource("/profiles/$path") })
 

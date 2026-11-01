@@ -8,17 +8,20 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.aipaca.android.AppContainer
 import com.aipaca.android.data.db.dao.BookmarkDao
 import com.aipaca.android.data.db.entity.BookmarkEntity
+import com.aipaca.android.data.device.npuSupported
 import com.aipaca.android.data.download.DownloadManager
 import com.aipaca.android.data.hf.HfApi
 import com.aipaca.android.data.hf.HfGgufFile
 import com.aipaca.android.data.hf.HfModelSummary
 import com.aipaca.android.data.hf.detectTools
 import com.aipaca.android.data.hf.ggufFiles
+import com.aipaca.android.engine.EngineCapabilities
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -28,6 +31,8 @@ class SearchViewModel(
     private val hfApi: HfApi,
     private val downloadManager: DownloadManager,
     private val bookmarkDao: BookmarkDao,
+    private val capabilities: EngineCapabilities,
+    private val npuAvailable: Boolean,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -53,6 +58,16 @@ class SearchViewModel(
 
     private val _detailsTools = MutableStateFlow<Boolean?>(null)
     val detailsTools: StateFlow<Boolean?> = _detailsTools.asStateFlow()
+
+    private val _detailsArchitecture = MutableStateFlow<String?>(null)
+
+    val unsupportedArchitecture: StateFlow<String?> = _detailsArchitecture
+        .map { arch -> arch?.takeIf { capabilities.supportsArchitecture(it) == false } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIBE_TIMEOUT_MS), null)
+
+    val npuReadyFiles: StateFlow<Set<String>> = combine(_detailFiles, _detailsArchitecture) { files, arch ->
+        npuReadyFileNames(files, capabilities, npuAvailable, arch?.let(capabilities::supportsArchitecture))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIBE_TIMEOUT_MS), emptySet())
 
     private val _detailsError = MutableStateFlow<String?>(null)
     val detailsError: StateFlow<String?> = _detailsError.asStateFlow()
@@ -107,6 +122,7 @@ class SearchViewModel(
         _loadingDetails.value = true
         _detailFiles.value = emptyList()
         _detailsTools.value = null
+        _detailsArchitecture.value = null
         _detailsError.value = null
         detailsJob = viewModelScope.launch {
             val fetched = hfApi.modelDetails(repoId)
@@ -119,6 +135,8 @@ class SearchViewModel(
             }
             _detailFiles.value = details.ggufFiles(repoId)
             _loadingDetails.value = false
+            _detailsArchitecture.value = hfApi.modelArchitecture(repoId).getOrNull()
+            if (!isActive) return@launch
             val template = hfApi.fetchChatTemplate(repoId).getOrNull()
             if (!isActive) return@launch
             _detailsTools.value = detectTools(
@@ -135,6 +153,7 @@ class SearchViewModel(
         _loadingDetails.value = false
         _detailFiles.value = emptyList()
         _detailsTools.value = null
+        _detailsArchitecture.value = null
         _detailsError.value = null
     }
 
@@ -163,7 +182,13 @@ class SearchViewModel(
 
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                SearchViewModel(container.hfApi, container.downloadManager, container.database.bookmarkDao())
+                SearchViewModel(
+                    container.hfApi,
+                    container.downloadManager,
+                    container.database.bookmarkDao(),
+                    container.engineCapabilities,
+                    npuSupported(container.device),
+                )
             }
         }
     }

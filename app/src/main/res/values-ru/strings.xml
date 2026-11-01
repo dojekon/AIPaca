@@ -46,6 +46,11 @@
     <string name="models_ok">Ок</string>
     <string name="models_profile_missing">Профиль для модели не найден</string>
     <string name="models_no_profile">нет профиля</string>
+    <string name="models_arch_unsupported">Архитектура «%1$s» не поддерживается движком (llama.cpp %2$s). Нужно обновить движок.</string>
+    <string name="models_note_running_on">Работает на %1$s вместо %2$s</string>
+    <string name="models_note_no_npu">На устройстве нет NPU, запуск на CPU</string>
+    <string name="models_note_npu_weights">NPU поддерживает только %1$d%% весов, запуск на CPU</string>
+    <string name="search_arch_unsupported">Архитектура «%1$s» пока не поддерживается движком</string>
     <string name="models_import_failed">Не удалось импортировать файл</string>
     <string name="models_load_failed">Не удалось загрузить модель</string>
     <string name="models_action_loading">Загрузка модели…</string>

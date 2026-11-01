@@ -15,10 +15,17 @@ import com.aipaca.android.AppContainer
 import com.aipaca.android.R
 import com.aipaca.android.data.db.entity.ModelEntity
 import com.aipaca.android.data.device.DeviceInfo
+import com.aipaca.android.data.device.npuSupported
 import com.aipaca.android.data.gguf.GgufMetadata
 import com.aipaca.android.data.gguf.readGgufMetadata
 import com.aipaca.android.engine.CONTEXT_SLIDER_MIN
 import com.aipaca.android.engine.ContextMemoryEstimate
+import com.aipaca.android.engine.ModelCompatibility
+import com.aipaca.android.engine.NpuVerdict
+import com.aipaca.android.engine.assessModel
+import com.aipaca.android.engine.defaultContextSize
+import com.aipaca.android.engine.resolveAccelerator
+import com.aipaca.android.engine.profiles.ProfileDoc
 import com.aipaca.android.engine.MemoryFit
 import com.aipaca.android.engine.RAM_RESERVE_BYTES
 import com.aipaca.android.engine.contextSliderMax
@@ -54,6 +61,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,6 +79,8 @@ class ModelsViewModel(
         val quant: String?,
         val toolsSupported: Int?,
         val profileLabel: String?,
+        val note: String?,
+        val noteIsError: Boolean,
         val profileJson: String?,
         val loaded: Boolean,
         val matched: Boolean,
@@ -149,6 +159,7 @@ class ModelsViewModel(
 
     private val metadataCache = HashMap<String, GgufMetadata>()
     private var editorLaunch: LaunchDoc? = null
+    private var editorAccelerator = Accelerator.DEFAULT
     private var editorMeta: GgufMetadata? = null
     private var editorWeightsBytes = 0L
 
@@ -167,7 +178,7 @@ class ModelsViewModel(
         accelerator,
     ) { entities, state, matcher, accel ->
         entities.map { it.toUi(state, matcher, accel) }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIBE_TIMEOUT_MS), emptyList())
+    }.flowOn(Dispatchers.IO).stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIBE_TIMEOUT_MS), emptyList())
 
     fun importModel(uri: Uri) {
         if (_importState.value is ImportState.Running) return
@@ -213,7 +224,12 @@ class ModelsViewModel(
         if (_actionState.value is ActionState.Busy) return
         viewModelScope.launch {
             _actionState.value = ActionState.Busy(entity.id, appContext.getString(R.string.models_action_loading))
-            val accel = _accelerator.value
+            val compatibility = withContext(Dispatchers.IO) { compatibilityFor(entity.path) }
+            if (!compatibility.runnable) {
+                _actionState.value = ActionState.Error(architectureMessage(compatibility))
+                return@launch
+            }
+            val accel = resolveAccelerator(_accelerator.value, compatibility)
             val doc = withContext(Dispatchers.IO) {
                 matcher.match(device, entity.fileName, null, accel).profile?.doc
             }
@@ -221,8 +237,9 @@ class ModelsViewModel(
                 _actionState.value = ActionState.Error(appContext.getString(R.string.models_profile_missing))
                 return@launch
             }
+            val contextSize = withContext(Dispatchers.IO) { contextSizeFor(entity, doc) }
             val ramError = withContext(Dispatchers.IO) {
-                ramErrorMessage(entity, LaunchTarget.apply(doc, accel, device.htpVersion, _npuPowerMode.value).withContextSize(entity.nCtx).launch)
+                ramErrorMessage(entity, LaunchTarget.apply(doc, accel, device.htpVersion, _npuPowerMode.value).withContextSize(contextSize).launch)
             }
             if (ramError != null) {
                 _actionState.value = ActionState.Error(ramError)
@@ -235,7 +252,7 @@ class ModelsViewModel(
             } else {
                 _npuPowerMode.value
             }
-            val launchDoc = LaunchTarget.apply(doc, accel, device.htpVersion, powerMode).withContextSize(entity.nCtx)
+            val launchDoc = LaunchTarget.apply(doc, accel, device.htpVersion, powerMode).withContextSize(contextSize)
             val result = withContext(Dispatchers.IO) {
                 engineManager.load(
                     entity.path,
@@ -268,7 +285,7 @@ class ModelsViewModel(
             val retry = withContext(Dispatchers.IO) {
                 engineManager.load(
                     entity.path,
-                    LaunchTarget.apply(fallback, Accelerator.CPU).withContextSize(entity.nCtx),
+                    LaunchTarget.apply(fallback, Accelerator.CPU).withContextSize(contextSize),
                     apiKey = settings.serverApiKey,
                     lanEnabled = settings.serverLanEnabled,
                     requestedPort = settings.serverPort,
@@ -332,10 +349,15 @@ class ModelsViewModel(
     private fun ModelEntity.toUi(
         state: EngineState,
         matcher: ProfileMatcher,
-        accelerator: Accelerator,
+        requested: Accelerator,
     ): ModelUi {
-        val match = matcher.match(device, fileName, null, accelerator)
-        val profileContext = match.profile?.doc?.launch?.nCtx ?: LaunchDoc().nCtx
+        val compatibility = compatibilityFor(path)
+        val planned = resolveAccelerator(requested, compatibility)
+        val loaded = state is EngineState.Ready && state.modelPath == path
+        val actual = if (loaded) Accelerator.fromBackend(engineManager.activeBackend) ?: planned else planned
+        val match = matcher.match(device, fileName, null, planned)
+        val profileContext = match.profile?.doc?.let { contextSizeFor(this, it, ignoreCustom = true) } ?: LaunchDoc().nCtx
+        val note = noteFor(compatibility, requested, actual, loaded)
         return ModelUi(
             id = id,
             name = fileName.substringBeforeLast('.', fileName),
@@ -343,13 +365,47 @@ class ModelsViewModel(
             sizeBytes = sizeBytes,
             quant = quant ?: matcher.extractQuant(fileName),
             toolsSupported = toolsSupported,
-            profileLabel = match.profile?.let { "${it.doc.id} · ${it.doc.backend}" },
+            profileLabel = match.profile?.let { "${it.doc.id} · ${actual.name}" },
+            note = note,
+            noteIsError = !compatibility.runnable,
             profileJson = match.profile?.doc?.let(::profileJsonForShare),
-            loaded = state is EngineState.Ready && state.modelPath == path,
+            loaded = loaded,
             matched = match.profile != null,
             contextSize = nCtx ?: profileContext,
             contextCustom = nCtx != null,
         )
+    }
+
+    private fun noteFor(
+        compatibility: ModelCompatibility,
+        requested: Accelerator,
+        actual: Accelerator,
+        loaded: Boolean,
+    ): String? = when {
+        !compatibility.runnable -> architectureMessage(compatibility)
+        loaded && actual != requested -> appContext.getString(R.string.models_note_running_on, actual.name, requested.name)
+        requested != Accelerator.NPU -> null
+        compatibility.npu == NpuVerdict.NO_NPU -> appContext.getString(R.string.models_note_no_npu)
+        compatibility.npu == NpuVerdict.UNSUPPORTED_WEIGHTS -> appContext.getString(
+            R.string.models_note_npu_weights,
+            ((compatibility.npuWeightShare ?: 0.0) * PERCENT).toInt(),
+        )
+        else -> null
+    }
+
+    private fun architectureMessage(compatibility: ModelCompatibility): String =
+        appContext.getString(
+            R.string.models_arch_unsupported,
+            compatibility.architecture.orEmpty(),
+            container.engineCapabilities.shortRevision,
+        )
+
+    private fun compatibilityFor(path: String): ModelCompatibility =
+        assessModel(metadataFor(path), container.engineCapabilities, npuSupported(device))
+
+    private fun contextSizeFor(entity: ModelEntity, doc: ProfileDoc, ignoreCustom: Boolean = false): Int {
+        if (!ignoreCustom) entity.nCtx?.takeIf { it > 0 }?.let { return it }
+        return defaultContextSize(doc.launch.nCtx, metadataFor(entity.path))
     }
 
     private fun currentThermalLevel(): ThermalLevel {
@@ -377,11 +433,19 @@ class ModelsViewModel(
     fun openContextEditor(modelId: Long) {
         viewModelScope.launch {
             val entity = models.value.firstOrNull { it.id == modelId } ?: return@launch
-            val accel = _accelerator.value
+            val accel = withContext(Dispatchers.IO) {
+                resolveAccelerator(_accelerator.value, compatibilityFor(entity.path))
+            }
             val doc = withContext(Dispatchers.IO) {
                 matcher.match(device, entity.fileName, null, accel).profile?.doc
             }
-            val launch = doc?.let { LaunchTarget.apply(it, accel, device.htpVersion, _npuPowerMode.value).launch } ?: LaunchDoc()
+            val launch = withContext(Dispatchers.IO) {
+                doc?.let {
+                    LaunchTarget.apply(it, accel, device.htpVersion, _npuPowerMode.value)
+                        .withContextSize(contextSizeFor(entity, it, ignoreCustom = true))
+                        .launch
+                } ?: LaunchDoc()
+            }
             val weights = File(entity.path).length()
             var metadataError: String? = null
             val meta = withContext(Dispatchers.IO) {
@@ -393,6 +457,7 @@ class ModelsViewModel(
                 }
             }
             editorLaunch = launch
+            editorAccelerator = accel
             editorMeta = meta
             editorWeightsBytes = weights
             val maxValue = contextSliderMax(meta)
@@ -456,7 +521,7 @@ class ModelsViewModel(
             estimate = estimate,
             availableBytes = available,
             fit = estimate?.let { memoryFit(it.totalBytes, available) },
-            npuWindowExceeded = _accelerator.value == Accelerator.NPU && estimate != null && exceedsNpuSession(estimate),
+            npuWindowExceeded = editorAccelerator == Accelerator.NPU && estimate != null && exceedsNpuSession(estimate),
             metadataError = metadataError,
         )
     }
@@ -556,6 +621,7 @@ class ModelsViewModel(
         private const val MODELS_DIR = "models"
         private const val SUBSCRIBE_TIMEOUT_MS = 5_000L
         private const val IMPORT_BUFFER_SIZE = 128 * 1024
+        private const val PERCENT = 100
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

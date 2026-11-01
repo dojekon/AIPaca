@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16",
+  "updatedAt": "2026-11-01",
   "devices": [
     {
       "key": "qcom-sm8650/12gb",
@@ -66,6 +66,13 @@
       "device": "generic-arm64/8gb",
       "quants": [],
       "file": "profiles/default-generic.json"
+    },
+    {
+      "id": "default/hexagon",
+      "family": "default",
+      "device": "generic-arm64/8gb",
+      "quants": [],
+      "file": "profiles/default-hexagon.json"
     }
   ]
 }

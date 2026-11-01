@@ -1,12 +1,18 @@
 package com.aipaca.android.ui.search
 
 import com.aipaca.android.data.hf.HfGgufFile
+import com.aipaca.android.engine.EngineCapabilities
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SearchFormatTest {
+
+    private val caps = EngineCapabilities(
+        architectures = listOf("qwen3"),
+        npuWeightTypes = listOf("F16", "Q4_0", "Q4_1", "Q8_0", "IQ4_NL", "MXFP4", "Q4_K", "Q5_K", "Q6_K"),
+    )
 
     @Test
     fun formatBytesZero() {
@@ -69,31 +75,50 @@ class SearchFormatTest {
     }
 
     @Test
-    fun npuReadyEmptyListIsFalse() {
-        assertFalse(npuReady(emptyList()))
+    fun npuReadyEmptyListIsEmpty() {
+        assertTrue(npuReadyFileNames(emptyList(), caps, npuAvailable = true, architectureSupported = true).isEmpty())
     }
 
     @Test
-    fun npuReadyTrueForQ4ZeroFile() {
-        assertTrue(npuReady(listOf(file("gemma-3-1b-Q4_0.gguf"))))
-        assertTrue(npuReady(listOf(file("model-Q8_0.gguf"))))
+    fun npuReadyFollowsEngineWeightTypes() {
+        val files = listOf(
+            file("gemma-3-1b-Q4_0.gguf"),
+            file("model-Q8_0.gguf"),
+            file("model-Q4_K_M.gguf"),
+            file("model-IQ4_NL.gguf"),
+            file("gpt-oss-20b-MXFP4.gguf"),
+            file("model-IQ4_XS.gguf"),
+            file("model-bf16.gguf"),
+            file("model-Q5_0.gguf"),
+            file("gemma-3-1b-Q4_0_4_4.gguf"),
+        )
+
+        assertEquals(
+            setOf(
+                "gemma-3-1b-Q4_0.gguf",
+                "model-Q8_0.gguf",
+                "model-Q4_K_M.gguf",
+                "model-IQ4_NL.gguf",
+                "gpt-oss-20b-MXFP4.gguf",
+            ),
+            npuReadyFileNames(files, caps, npuAvailable = true, architectureSupported = null),
+        )
     }
 
     @Test
-    fun npuReadyFalseForUnsupportedQuants() {
-        assertFalse(npuReady(listOf(file("model-IQ4_XS.gguf"))))
-        assertFalse(npuReady(listOf(file("model-bf16.gguf"))))
-        assertFalse(npuReady(listOf(file("model-Q3_K_M.gguf"), file("model-Q5_0.gguf"))))
-        assertFalse(npuReady(listOf(file("gemma-3-1b-Q4_0_4_4.gguf"))))
+    fun npuReadyDependsOnEngineNotOnHardcodedList() {
+        val narrow = EngineCapabilities(npuWeightTypes = listOf("Q8_0"))
+
+        assertFalse(npuSupportsFile("model-Q4_K_M.gguf", narrow))
+        assertTrue(npuSupportsFile("model-Q8_0.gguf", narrow))
     }
 
     @Test
-    fun npuReadyForKQuantsAndMxfp4() {
-        assertTrue(npuReady(listOf(file("model-Q4_K_M.gguf"))))
-        assertTrue(npuReady(listOf(file("model-Q5_K_S.gguf"))))
-        assertTrue(npuReady(listOf(file("model-Q6_K.gguf"))))
-        assertTrue(npuReady(listOf(file("model-IQ4_NL.gguf"))))
-        assertTrue(npuReady(listOf(file("gpt-oss-20b-MXFP4.gguf"))))
+    fun npuReadyEmptyWithoutNpuOrForUnsupportedArchitecture() {
+        val files = listOf(file("model-Q4_0.gguf"))
+
+        assertTrue(npuReadyFileNames(files, caps, npuAvailable = false, architectureSupported = true).isEmpty())
+        assertTrue(npuReadyFileNames(files, caps, npuAvailable = true, architectureSupported = false).isEmpty())
     }
 
     private fun file(name: String): HfGgufFile =

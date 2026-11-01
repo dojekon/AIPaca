@@ -6,13 +6,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENGINE_DIR="$PROJECT_ROOT/build/engine"
 LLAMA_DIR="$ENGINE_DIR/llama.cpp"
-IMAGE="ghcr.io/snapdragon-toolchain/arm64-android:v0.7"
+IMAGE="ghcr.io/snapdragon-toolchain/arm64-android:v0.8"
 PRESET="arm64-android-snapdragon-release"
 BUILD_DIR="$LLAMA_DIR/build-snapdragon"
 PKG_DIR="$LLAMA_DIR/pkg-android/llama.cpp"
 STAGE_DIR="$ENGINE_DIR/stage/arm64-v8a"
 JNI_DIR="$PROJECT_ROOT/app/src/main/jniLibs/arm64-v8a"
 JOBS="${JOBS:-6}"
+LLAMA_REF="${LLAMA_REF:-$(tr -d '[:space:]' < "$SCRIPT_DIR/engine-ref.txt")}"
+CAPS_FILE="$PROJECT_ROOT/app/src/main/assets/engine/capabilities.json"
 
 echo "== [1/6] environment checks =="
 docker version --format '{{.Server.Version}}'
@@ -27,8 +29,14 @@ echo "== [2/6] source clone + version =="
 if [ ! -d "$LLAMA_DIR/.git" ]; then
   mkdir -p "$ENGINE_DIR"
   git clone --depth 1 https://github.com/ggml-org/llama.cpp "$LLAMA_DIR"
+fi
+if [ "$LLAMA_REF" = "keep" ]; then
+  echo "LLAMA_REF=keep: using the existing checkout as-is"
 else
-  echo "llama.cpp already present, using as-is (no fetch/reset)"
+  echo "updating llama.cpp to $LLAMA_REF"
+  git -C "$LLAMA_DIR" fetch --depth 1 origin "$LLAMA_REF"
+  git -C "$LLAMA_DIR" reset --hard FETCH_HEAD
+  cp "$LLAMA_DIR/docs/backend/snapdragon/CMakeUserPresets.json" "$LLAMA_DIR/CMakeUserPresets.json"
 fi
 HEAD_SHA="$(git -C "$LLAMA_DIR" rev-parse HEAD)"
 {
@@ -153,6 +161,8 @@ fi
 rm -rf "$JNI_DIR"
 mkdir -p "$JNI_DIR"
 cp -a "$STAGE_DIR"/. "$JNI_DIR"/
+
+"$SCRIPT_DIR/engine-capabilities.sh" "$LLAMA_DIR" "$CAPS_FILE"
 
 echo "artifacts in jniLibs:"
 ls -la "$JNI_DIR"

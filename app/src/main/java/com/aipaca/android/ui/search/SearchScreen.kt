@@ -80,6 +80,8 @@ fun SearchScreen(
     val detailFiles by viewModel.detailFiles.collectAsStateWithLifecycle()
     val detailsTools by viewModel.detailsTools.collectAsStateWithLifecycle()
     val detailsError by viewModel.detailsError.collectAsStateWithLifecycle()
+    val npuReadyFiles by viewModel.npuReadyFiles.collectAsStateWithLifecycle()
+    val unsupportedArchitecture by viewModel.unsupportedArchitecture.collectAsStateWithLifecycle()
     val downloadingUrls by viewModel.downloadingUrls.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
 
@@ -119,6 +121,8 @@ fun SearchScreen(
                     files = detailFiles,
                     detailsError = detailsError,
                     toolsSupported = detailsTools,
+                    npuReadyFiles = npuReadyFiles,
+                    unsupportedArchitecture = unsupportedArchitecture,
                     downloadingUrls = downloadingUrls,
                     bookmarked = openRepoId in bookmarkedIds,
                     onToggleBookmark = { viewModel.toggleBookmark(openRepoId) },
@@ -318,6 +322,8 @@ private fun ColumnScope.RepoDetails(
     files: List<HfGgufFile>,
     detailsError: String?,
     toolsSupported: Boolean?,
+    npuReadyFiles: Set<String>,
+    unsupportedArchitecture: String?,
     downloadingUrls: Set<String>,
     bookmarked: Boolean,
     onToggleBookmark: () -> Unit,
@@ -344,6 +350,13 @@ private fun ColumnScope.RepoDetails(
         }
         BookmarkButton(bookmarked = bookmarked, onClick = onToggleBookmark)
     }
+    unsupportedArchitecture?.let { arch ->
+        Text(
+            text = stringResource(R.string.search_arch_unsupported, arch),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
     Spacer(Modifier.height(4.dp))
     when {
         loading -> Box(
@@ -367,6 +380,7 @@ private fun ColumnScope.RepoDetails(
                     file = file,
                     downloading = file.fileName in downloadingUrls,
                     toolsSupported = toolsSupported,
+                    npuReady = file.fileName in npuReadyFiles,
                     onDownload = { onDownload(file) },
                 )
             }
@@ -379,6 +393,7 @@ private fun FileCard(
     file: HfGgufFile,
     downloading: Boolean,
     toolsSupported: Boolean?,
+    npuReady: Boolean,
     onDownload: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -405,7 +420,7 @@ private fun FileCard(
                     Spacer(Modifier.width(6.dp))
                     Badge(text = stringResource(R.string.search_tools_badge))
                 }
-                if (npuReady(listOf(file))) {
+                if (npuReady) {
                     Spacer(Modifier.width(6.dp))
                     Badge(
                         text = stringResource(R.string.search_npu_ready),

@@ -8,6 +8,8 @@ import android.net.NetworkCapabilities
 import android.os.Bundle
 import androidx.room.Room
 import com.aipaca.android.data.db.AiPacaDatabase
+import com.aipaca.android.data.device.DeviceDescriptor
+import com.aipaca.android.data.device.DeviceInfo
 import com.aipaca.android.data.download.DownloadEngine
 import com.aipaca.android.data.download.DownloadManager
 import com.aipaca.android.data.hf.HfApi
@@ -15,6 +17,8 @@ import com.aipaca.android.data.profiles.remote.OkHttpProfileFetcher
 import com.aipaca.android.data.profiles.remote.ProfileRepository
 import com.aipaca.android.data.settings.Settings
 import com.aipaca.android.data.settings.SettingsRepository
+import com.aipaca.android.engine.EngineCapabilities
+import com.aipaca.android.engine.EngineCapabilitiesLoader
 import com.aipaca.android.engine.EngineManager
 import com.aipaca.android.ui.chat.AgentNotifier
 import com.aipaca.android.ui.chat.AgentSessionRunner
@@ -54,6 +58,12 @@ class AppContainer(context: Context) {
 
     val engineManager: EngineManager by lazy {
         EngineManager(appContext)
+    }
+
+    val device: DeviceDescriptor by lazy { DeviceInfo.current(appContext) }
+
+    val engineCapabilities: EngineCapabilities by lazy {
+        EngineCapabilitiesLoader.fromAssets(appContext)
     }
 
     val profileRepository: ProfileRepository by lazy {

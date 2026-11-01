@@ -43,6 +43,17 @@ class HfApi(
             get(url, authHint = true) { body -> json.decodeFromString<HfModelDetails>(body) }
         }
 
+    suspend fun modelArchitecture(repoId: String): Result<String?> =
+        withContext(Dispatchers.IO) {
+            val url = BASE_URL.toHttpUrl().newBuilder()
+                .addPathSegment("api")
+                .addPathSegment("models")
+                .apply { repoId.split('/').filter { it.isNotEmpty() }.forEach { addPathSegment(it) } }
+                .addQueryParameter("expand[]", "gguf")
+                .build()
+            get(url, authHint = true) { body -> json.decodeFromString<HfModelGguf>(body).gguf?.architecture }
+        }
+
     suspend fun fetchRawFile(
         repoId: String,
         fileName: String,

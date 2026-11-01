@@ -12,5 +12,8 @@ enum class Accelerator(val storageKey: String, val profileBackend: String) {
 
         fun fromKey(key: String?): Accelerator =
             entries.firstOrNull { it.storageKey.equals(key, ignoreCase = true) } ?: DEFAULT
+
+        fun fromBackend(backend: String?): Accelerator? =
+            entries.firstOrNull { it.profileBackend.equals(backend, ignoreCase = true) }
     }
 }

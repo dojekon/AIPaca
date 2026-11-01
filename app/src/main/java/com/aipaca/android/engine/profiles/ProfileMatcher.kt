@@ -25,6 +25,21 @@ class ProfileMatcher(private val catalog: ProfileCatalog) {
             .filter { isAllowed(it, accelerator) }
             .sortedBy { backendRank(it, accelerator) }
 
+        if (accelerator == Accelerator.NPU) {
+            val sameBackend = candidates.filter { backendRank(it, accelerator) == 0 }
+            pickForDevice(sameBackend, device, quant)?.let { return it }
+            defaultProfile(accelerator, sameBackendOnly = true)?.let { return MatchResult(it, "default") }
+        }
+        pickForDevice(candidates, device, quant)?.let { return it }
+        defaultProfile(accelerator, sameBackendOnly = false)?.let { return MatchResult(it, "default") }
+        return MatchResult(null, "no-match")
+    }
+
+    private fun pickForDevice(
+        candidates: List<LoadedProfile>,
+        device: DeviceDescriptor,
+        quant: String?,
+    ): MatchResult? {
         candidates.firstOrNull { deviceRank(it, device) == RANK_EXACT && quantMatches(it, quant) }
             ?.let { return MatchResult(it, "exact-device+quant") }
         candidates.firstOrNull { deviceRank(it, device) == RANK_SAME_SOC && quantMatches(it, quant) }
@@ -37,10 +52,14 @@ class ProfileMatcher(private val catalog: ProfileCatalog) {
             ?.let { return MatchResult(it, "same-soc") }
         candidates.firstOrNull { deviceRank(it, device) == RANK_GENERIC }
             ?.let { return MatchResult(it, "generic-device") }
-        catalog.profiles.firstOrNull { isDefault(it) && isAllowed(it, accelerator) }
-            ?.let { return MatchResult(it, "default") }
-        return MatchResult(null, "no-match")
+        return null
     }
+
+    private fun defaultProfile(accelerator: Accelerator, sameBackendOnly: Boolean): LoadedProfile? =
+        catalog.profiles
+            .filter { isDefault(it) && isAllowed(it, accelerator) }
+            .filter { !sameBackendOnly || backendRank(it, accelerator) == 0 }
+            .minByOrNull { backendRank(it, accelerator) }
 
     fun extractQuant(fileName: String): String? {
         val haystack = fileName.lowercase()

@@ -432,6 +432,17 @@ private fun ModelRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                model.note?.let { note ->
+                    Text(
+                        text = note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (model.noteIsError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.tertiary
+                        },
+                    )
+                }
                 Text(
                     text = stringResource(
                         if (model.contextCustom) R.string.models_context_custom else R.string.models_context_label,

@@ -46,6 +46,11 @@
     <string name="models_ok">OK</string>
     <string name="models_profile_missing">No profile found for this model</string>
     <string name="models_no_profile">no profile</string>
+    <string name="models_arch_unsupported">Architecture \"%1$s\" is not supported by the engine (llama.cpp %2$s). The engine needs an update.</string>
+    <string name="models_note_running_on">Running on %1$s instead of %2$s</string>
+    <string name="models_note_no_npu">No NPU on this device, runs on CPU</string>
+    <string name="models_note_npu_weights">NPU supports only %1$d%% of weights, runs on CPU</string>
+    <string name="search_arch_unsupported">Architecture \"%1$s\" is not supported by the engine yet</string>
     <string name="models_import_failed">Could not import the file</string>
     <string name="models_load_failed">Could not load the model</string>
     <string name="models_action_loading">Loading model…</string>

@@ -2,6 +2,8 @@ package com.aipaca.android.ui.search
 
 import com.aipaca.android.data.hf.HfGgufFile
 import com.aipaca.android.data.hf.quantFromFileName
+import com.aipaca.android.engine.EngineCapabilities
+import com.aipaca.android.engine.npuSupportsQuant
 import kotlin.math.roundToLong
 
 private const val KB = 1024L
@@ -9,13 +11,6 @@ private const val MB = KB * 1024L
 private const val GB = MB * 1024L
 private const val THOUSAND = 1_000L
 private const val MILLION = 1_000_000L
-private val NPU_QUANTS = setOf(
-    "Q4_0", "Q4_1", "Q8_0",
-    "Q4_K", "Q4_K_S", "Q4_K_M",
-    "Q5_K", "Q5_K_S", "Q5_K_M",
-    "Q6_K", "IQ4_NL",
-)
-private const val NPU_MXFP4_MARKER = "mxfp4"
 
 fun formatBytes(bytes: Long): String {
     val value = bytes.coerceAtLeast(0L)
@@ -41,11 +36,18 @@ fun formatCount(count: Long): String {
     }
 }
 
-fun npuReady(files: List<HfGgufFile>): Boolean =
-    files.any { npuSupportsFile(it.fileName) }
+fun npuReadyFileNames(
+    files: List<HfGgufFile>,
+    capabilities: EngineCapabilities,
+    npuAvailable: Boolean,
+    architectureSupported: Boolean?,
+): Set<String> {
+    if (!npuAvailable || architectureSupported == false) return emptySet()
+    return files.filter { npuSupportsFile(it.fileName, capabilities) }.mapTo(mutableSetOf()) { it.fileName }
+}
 
-fun npuSupportsFile(fileName: String): Boolean =
-    quantFromFileName(fileName) in NPU_QUANTS || fileName.contains(NPU_MXFP4_MARKER, ignoreCase = true)
+fun npuSupportsFile(fileName: String, capabilities: EngineCapabilities): Boolean =
+    npuSupportsQuant(quantFromFileName(fileName), fileName, capabilities)
 
 private fun unit(value: Double, suffix: String): String = "${unitNoSpace(value)} $suffix"
 

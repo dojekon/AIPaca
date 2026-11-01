@@ -22,9 +22,9 @@ jobs:
       - name: Docker info
         run: docker version
 
-      # scripts/build-engine.sh: клонирует llama.cpp (HEAD), собирает через cmake
+      # scripts/build-engine.sh: клонирует llama.cpp (ревизия из scripts/engine-ref.txt), собирает через cmake
       # preset arm64-android-snapdragon-release в образе
-      # ghcr.io/snapdragon-toolchain/arm64-android:v0.7 (NDK r29) и раскладывает
+      # ghcr.io/snapdragon-toolchain/arm64-android:v0.8 (NDK r29) и раскладывает
       # результат в app/src/main/jniLibs/arm64-v8a (~184 МБ).
       - name: Build llama.cpp engine
         env:

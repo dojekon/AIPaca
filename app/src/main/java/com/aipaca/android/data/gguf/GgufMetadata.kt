@@ -23,6 +23,7 @@ data class GgufMetadata(
     val sharedKvLayers: Int,
     val feedForwardLength: List<Int>,
     val vocabSize: Int?,
+    val weightTypes: Map<String, Long> = emptyMap(),
 ) {
     fun headCountAt(layer: Int): Int? = headCount.valueAt(layer)
 
@@ -61,6 +62,18 @@ private const val TYPE_ARRAY = 9
 private const val TYPE_UINT64 = 10
 private const val TYPE_INT64 = 11
 private const val TYPE_FLOAT64 = 12
+private const val MAX_TENSOR_DIMS = 8
+
+private val GGML_TYPE_NAMES = mapOf(
+    0 to "F32", 1 to "F16", 2 to "Q4_0", 3 to "Q4_1", 6 to "Q5_0", 7 to "Q5_1", 8 to "Q8_0", 9 to "Q8_1",
+    10 to "Q2_K", 11 to "Q3_K", 12 to "Q4_K", 13 to "Q5_K", 14 to "Q6_K", 15 to "Q8_K",
+    16 to "IQ2_XXS", 17 to "IQ2_XS", 18 to "IQ3_XXS", 19 to "IQ1_S", 20 to "IQ4_NL", 21 to "IQ3_S",
+    22 to "IQ2_S", 23 to "IQ4_XS", 24 to "I8", 25 to "I16", 26 to "I32", 27 to "I64", 28 to "F64",
+    29 to "IQ1_M", 30 to "BF16", 34 to "TQ1_0", 35 to "TQ2_0", 39 to "MXFP4", 40 to "NVFP4",
+    41 to "Q1_0", 42 to "Q2_0",
+)
+
+fun ggmlTypeName(id: Int): String = GGML_TYPE_NAMES[id] ?: "TYPE_$id"
 
 fun readGgufMetadata(file: File): GgufMetadata =
     BufferedInputStream(file.inputStream(), 64 * 1024).use { readGgufMetadata(it) }
@@ -70,7 +83,7 @@ fun readGgufMetadata(input: InputStream): GgufMetadata {
     if (reader.int32() != GGUF_MAGIC) throw IOException("Not a GGUF file")
     val version = reader.int32()
     if (version < 2) throw IOException("Unsupported GGUF version $version")
-    reader.int64()
+    val tensorCount = reader.int64()
     val kvCount = reader.int64()
     val values = HashMap<String, Any>()
     for (index in 0 until kvCount) {
@@ -79,7 +92,28 @@ fun readGgufMetadata(input: InputStream): GgufMetadata {
         val value = reader.value(type)
         if (value != null) values[key] = value
     }
-    return buildMetadata(values)
+    return buildMetadata(values).copy(weightTypes = readWeightTypes(reader, tensorCount))
+}
+
+private fun readWeightTypes(reader: LittleEndianReader, tensorCount: Long): Map<String, Long> {
+    if (tensorCount < 0) throw IOException("Negative GGUF tensor count")
+    val elementsByType = HashMap<String, Long>()
+    var index = 0L
+    while (index < tensorCount) {
+        reader.string()
+        val dims = reader.int32()
+        if (dims < 0 || dims > MAX_TENSOR_DIMS) throw IOException("Bad GGUF tensor rank $dims")
+        var elements = 1L
+        repeat(dims) { elements *= reader.int64() }
+        val type = reader.int32()
+        reader.int64()
+        if (dims >= 2) {
+            val name = ggmlTypeName(type)
+            elementsByType[name] = (elementsByType[name] ?: 0L) + elements
+        }
+        index++
+    }
+    return elementsByType
 }
 
 private fun buildMetadata(values: Map<String, Any>): GgufMetadata {
